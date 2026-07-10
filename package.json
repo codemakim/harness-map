@@ -17,12 +17,27 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "tsx --test test/*.test.ts",
-    "check": "npm run build && npm test"
+    "check": "npm run build && npm test",
+    "prepack": "npm run check"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "tsx": "^4.20.0",
     "typescript": "^5.8.0"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/codemakim/harness-map.git"
+  },
+  "bugs": {
+    "url": "https://github.com/codemakim/harness-map/issues"
+  },
+  "homepage": "https://github.com/codemakim/harness-map#readme",
+  "keywords": [
+    "agents",
+    "codex",
+    "cli",
+    "developer-tools"
+  ],
   "license": "MIT"
 }

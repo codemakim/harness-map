@@ -52,6 +52,31 @@ That stack is powerful, but hard to inspect. A developer looking at
 `harness-map` exists to answer that question without calling an AI model and
 without touching the network.
 
+## Install
+
+Requires Node.js 20 or newer.
+
+```sh
+npx harness-map explain apps/web/src/pages/Home.tsx
+```
+
+The CLI reads local files only. It makes no AI or network calls.
+
+## Usage
+
+```sh
+npx harness-map tree
+npx harness-map explain apps/web/src/pages/Home.tsx
+npx harness-map budget
+npx harness-map doctor
+```
+
+Add `--json` to any command for machine-readable output. `explain` also accepts
+`--cwd <dir>` and `--agent codex`.
+
+The project root is the nearest ancestor containing `.git`. Without one,
+`harness-map` uses the effective working directory as the root.
+
 ## v0.1 Scope
 
 First target: Codex only.
@@ -120,3 +145,12 @@ Drift:
 - Claude documentation still says npm
 - Cursor has no payment security rule
 ```
+
+## Development
+
+```sh
+npm install
+npm run check
+```
+
+The package has no runtime dependencies.
