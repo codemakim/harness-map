@@ -1,0 +1,28 @@
+{
+  "name": "harness-map",
+  "version": "0.1.0",
+  "description": "Show what instructions an agent actually reads for a file.",
+  "type": "module",
+  "bin": {
+    "harness-map": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "tsx --test test/*.test.ts",
+    "check": "npm run build && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.8.0"
+  },
+  "license": "MIT"
+}
