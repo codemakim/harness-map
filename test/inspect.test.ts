@@ -47,9 +47,26 @@ test("accepts existing references and package scripts", async (t) => {
   await mkdir(join(root, "docs"));
   await writeFile(join(root, "docs/rules.md"), "rules");
   await writeFile(join(root, "package.json"), JSON.stringify({ scripts: { check: "node --test" } }));
-  const files = [instruction(join(root, "AGENTS.md"), "Read docs/rules.md. Run npm run check.", 1)];
+  const files = [
+    instruction(
+      join(root, "AGENTS.md"),
+      "Read docs/rules.md. Run npm run check, pnpm run check, then pnpm install.",
+      1,
+    ),
+  ];
 
   const result = await inspectInstructions(files, root);
 
   assert.deepEqual(result.warnings, []);
+});
+
+test("uses the global display path in warnings", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const path = join(root, "home/.codex/AGENTS.md");
+  const global = { ...instruction(path, "Read missing.md", 1), kind: "global" as const, displayPath: "~/.codex/AGENTS.md" };
+
+  const result = await inspectInstructions([global], root);
+
+  assert.equal(result.warnings[0].source, "~/.codex/AGENTS.md");
 });

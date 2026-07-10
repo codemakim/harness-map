@@ -22,11 +22,47 @@ export interface Inspection {
   warnings: Warning[];
 }
 
+const pnpmCommands = new Set([
+  "add",
+  "audit",
+  "bin",
+  "config",
+  "create",
+  "deploy",
+  "dlx",
+  "env",
+  "exec",
+  "fetch",
+  "help",
+  "import",
+  "init",
+  "install",
+  "link",
+  "list",
+  "outdated",
+  "pack",
+  "patch",
+  "prune",
+  "publish",
+  "rebuild",
+  "remove",
+  "root",
+  "server",
+  "setup",
+  "store",
+  "uninstall",
+  "unlink",
+  "update",
+  "view",
+  "why",
+]);
+
 function lastMatch(text: string, pattern: RegExp): string | undefined {
   return text.match(pattern)?.at(-1);
 }
 
 function displaySource(file: InstructionFile, projectRoot: string): string {
+  if (file.kind === "global") return file.displayPath;
   return relative(projectRoot, file.path) || file.displayPath;
 }
 
@@ -91,9 +127,10 @@ export async function inspectInstructions(
       }
     }
 
-    for (const match of file.content.matchAll(/\b(npm\s+run|pnpm|yarn|bun\s+run)\s+([\w:-]+)/g)) {
+    for (const match of file.content.matchAll(/\b(npm\s+run|pnpm(?:\s+run)?)\s+([\w:-]+)/g)) {
       const command = match[0];
       const script = match[2];
+      if (match[1] === "pnpm" && pnpmCommands.has(script)) continue;
       const packagePath = await findNearestPackageJson(dirname(file.path), projectRoot);
       if (!packagePath || !(await hasPackageScript(packagePath, script))) {
         warnings.push({
