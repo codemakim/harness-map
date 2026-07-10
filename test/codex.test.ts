@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
+import { execFile as execFileCallback } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { promisify } from "node:util";
 
-import { discoverCodex } from "../src/codex.js";
+import { discoverCodex, discoverInstructionFiles } from "../src/codex.js";
+
+const execFile = promisify(execFileCallback);
 
 async function createRepo(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "harness-map-"));
@@ -75,4 +79,18 @@ test("falls back to AGENTS.md when override is blank", async (t) => {
   });
 
   assert.deepEqual(result.instructions.map((file) => file.content), ["regular"]);
+});
+
+test("repository inventory excludes gitignored instruction files", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await execFile("git", ["init", "-q"], { cwd: root });
+  await mkdir(join(root, "state"));
+  await writeFile(join(root, ".gitignore"), "state/\n");
+  await writeFile(join(root, "AGENTS.md"), "root");
+  await writeFile(join(root, "state/AGENTS.md"), "ignored");
+
+  const files = await discoverInstructionFiles(root);
+
+  assert.deepEqual(files.map((file) => file.displayPath), ["./AGENTS.md"]);
 });

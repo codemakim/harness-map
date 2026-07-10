@@ -86,7 +86,7 @@ function referencesIn(text: string): Set<string> {
     references.add(match[1].split("#", 1)[0]);
   }
   for (const match of text.matchAll(/(?:^|[\s`'"(])([^\s`'"()]+\.(?:md|mdx|json|ya?ml|toml))(?=$|[\s`'"),.])/gim)) {
-    references.add(match[1]);
+    if (match[1].includes("/")) references.add(match[1]);
   }
   return references;
 }
@@ -118,20 +118,35 @@ export async function inspectInstructions(
     previousTestCommand = testCommand ?? previousTestCommand;
 
     for (const reference of referencesIn(file.content)) {
-      if (!reference || reference.startsWith("#") || /^[a-z]+:\/\//i.test(reference) || isAbsolute(reference)) {
+      if (
+        !reference ||
+        reference.startsWith("#") ||
+        reference.startsWith("~/") ||
+        reference.startsWith("@") ||
+        reference.includes("<") ||
+        reference.includes(">") ||
+        /^[a-z]+:\/\//i.test(reference) ||
+        isAbsolute(reference)
+      ) {
         continue;
       }
-      const path = resolve(dirname(file.path), reference);
-      if (isInside(projectRoot, path) && !(await exists(path))) {
+      const candidates = [
+        resolve(dirname(file.path), reference),
+        resolve(projectRoot, reference),
+      ].filter((path, index, paths) => isInside(projectRoot, path) && paths.indexOf(path) === index);
+      if (candidates.length && !(await Promise.all(candidates.map(exists))).some(Boolean)) {
         warnings.push({ kind: "missing-reference", message: `${reference} does not exist`, source });
       }
     }
 
-    for (const match of file.content.matchAll(/\b(npm\s+run|pnpm(?:\s+run)?)\s+([\w:-]+)/g)) {
-      const command = match[0];
-      const script = match[2];
-      if (match[1] === "pnpm" && pnpmCommands.has(script)) continue;
-      const packagePath = await findNearestPackageJson(dirname(file.path), projectRoot);
+    for (const match of file.content.matchAll(/(?:\bcd\s+([^\s;&]+)\s+&&\s+)?\b(npm\s+run|pnpm(?:\s+run)?)\s+([\w:-]+)/g)) {
+      const command = `${match[2]} ${match[3]}`;
+      const script = match[3];
+      if (match[2] === "pnpm" && pnpmCommands.has(script)) continue;
+      const commandDirectory = match[1] ? resolve(dirname(file.path), match[1]) : dirname(file.path);
+      const packagePath = isInside(projectRoot, commandDirectory)
+        ? await findNearestPackageJson(commandDirectory, projectRoot)
+        : undefined;
       if (!packagePath || !(await hasPackageScript(packagePath, script))) {
         warnings.push({
           kind: "missing-package-script",

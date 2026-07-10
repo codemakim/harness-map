@@ -64,9 +64,51 @@ test("uses the global display path in warnings", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "harness-map-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const path = join(root, "home/.codex/AGENTS.md");
-  const global = { ...instruction(path, "Read missing.md", 1), kind: "global" as const, displayPath: "~/.codex/AGENTS.md" };
+  const global = {
+    ...instruction(path, "Read [missing](docs/missing.md)", 1),
+    kind: "global" as const,
+    displayPath: "~/.codex/AGENTS.md",
+  };
 
   const result = await inspectInstructions([global], root);
 
   assert.equal(result.warnings[0].source, "~/.codex/AGENTS.md");
+});
+
+test("checks only concrete local references and falls back to the project root", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, "vault"));
+  await writeFile(join(root, "vault/index.md"), "index");
+  const content = [
+    "Read vault/index.md.",
+    "Config: ~/.openclaw/openclaw.json.",
+    "Skill: .agents/skills/<skill-name>/SKILL.md.",
+    "Import: @AGENTS.md.",
+    "Templates: SOUL.md and USER.md.",
+    "Required: [missing](docs/missing.md).",
+  ].join("\n");
+  const files = [instruction(join(root, "vault/AGENTS.md"), content, 1)];
+
+  const result = await inspectInstructions(files, root);
+
+  assert.deepEqual(result.warnings, [
+    {
+      kind: "missing-reference",
+      message: "docs/missing.md does not exist",
+      source: "vault/AGENTS.md",
+    },
+  ]);
+});
+
+test("checks package scripts from an explicit cd directory", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, "scripts"));
+  await writeFile(join(root, "scripts/package.json"), JSON.stringify({ scripts: { check: "node --test" } }));
+  const files = [instruction(join(root, "AGENTS.md"), "Run cd scripts && npm run check.", 1)];
+
+  const result = await inspectInstructions(files, root);
+
+  assert.deepEqual(result.warnings, []);
 });

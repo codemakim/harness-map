@@ -1,5 +1,9 @@
+import { execFile as execFileCallback } from "node:child_process";
 import { access, readFile, readdir, stat } from "node:fs/promises";
 import { dirname, join, parse, relative, resolve, sep } from "node:path";
+import { promisify } from "node:util";
+
+const execFile = promisify(execFileCallback);
 
 export const DEFAULT_BUDGET_BYTES = 32 * 1024;
 
@@ -130,6 +134,34 @@ export async function discoverCodex(options: DiscoverOptions): Promise<CodexMap>
 export async function discoverInstructionFiles(root: string): Promise<InstructionFile[]> {
   const projectRoot = resolve(root);
   const files: InstructionFile[] = [];
+
+  try {
+    const { stdout } = await execFile(
+      "git",
+      [
+        "ls-files",
+        "--cached",
+        "--others",
+        "--exclude-standard",
+        "-z",
+        "--",
+        "AGENTS.md",
+        "AGENTS.override.md",
+        ":(glob)**/AGENTS.md",
+        ":(glob)**/AGENTS.override.md",
+      ],
+      { cwd: projectRoot, encoding: "utf8" },
+    );
+    for (const relativePath of stdout.split("\0").filter(Boolean)) {
+      const path = join(projectRoot, relativePath);
+      if (!(await exists(path))) continue;
+      const file = await loadInstruction(path, "project", `./${relativePath}`);
+      if (file) files.push(file);
+    }
+    return files.sort((left, right) => left.path.localeCompare(right.path));
+  } catch {
+    // Non-Git directories use a filesystem walk.
+  }
 
   async function visit(directory: string): Promise<void> {
     const entries = await readdir(directory, { withFileTypes: true });
