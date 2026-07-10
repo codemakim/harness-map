@@ -43,8 +43,10 @@ async function exists(path: string): Promise<boolean> {
   try {
     await access(path);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return false;
+    throw error;
   }
 }
 
@@ -117,6 +119,23 @@ async function loadInstruction(
   };
 }
 
+async function instructionMetadata(
+  path: string,
+  displayPath: string,
+): Promise<InstructionFile> {
+  const metadata = await stat(path);
+  return {
+    path,
+    displayPath,
+    bytes: metadata.size,
+    effectiveBytes: 0,
+    content: "",
+    kind: "project",
+    precedence: 0,
+    truncated: false,
+  };
+}
+
 export async function discoverCodex(options: DiscoverOptions): Promise<CodexMap> {
   const cwd = resolve(options.cwd);
   const target = resolve(options.target);
@@ -142,8 +161,9 @@ export async function discoverCodex(options: DiscoverOptions): Promise<CodexMap>
   for (const directory of directoriesBetween(projectRoot, cwd)) {
     const path = await selectInstruction(directory, filenames, false);
     if (!path) continue;
-    const file = await loadInstruction(path, "project", `./${relative(projectRoot, path)}`);
-    if (file) projectCandidates.push(file);
+    projectCandidates.push(
+      await instructionMetadata(path, `./${relative(projectRoot, path)}`),
+    );
   }
 
   const budgetBytes = options.config.maxBytes;
@@ -157,13 +177,20 @@ export async function discoverCodex(options: DiscoverOptions): Promise<CodexMap>
       continue;
     }
 
-    const data = await readFile(file.path);
+    let data: Buffer;
+    try {
+      data = await readFile(file.path);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      throw error;
+    }
     const effectiveData = data.subarray(0, Math.min(data.length, remainingBytes));
     const content = effectiveData.toString("utf8");
     if (!content.trim()) continue;
 
     projectInstructions.push({
       ...file,
+      bytes: data.length,
       content,
       effectiveBytes: effectiveData.length,
       truncated: data.length > effectiveData.length,

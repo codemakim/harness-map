@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile as execFileCallback } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -125,6 +125,21 @@ test("finds the nearest configured project root", async (t) => {
   assert.equal(await findProjectRoot(cwd, []), cwd);
 });
 
+test("project root discovery propagates marker I/O errors", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const blocked = join(root, "blocked");
+  await mkdir(blocked);
+  await writeFile(join(blocked, "marker"), "");
+  await chmod(blocked, 0o000);
+
+  try {
+    await assert.rejects(findProjectRoot(root, ["blocked/marker"]), /EACCES|permission denied/i);
+  } finally {
+    await chmod(blocked, 0o700);
+  }
+});
+
 test("repository inventory excludes gitignored instruction files", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "harness-map-"));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -183,4 +198,27 @@ test("truncates the final project file and skips later files", async (t) => {
   assert.equal(result.projectEffectiveBytes, 8);
   assert.equal(result.overBudget, true);
   assert.deepEqual(result.skippedInstructions.map((file) => file.displayPath), ["./apps/web/src/AGENTS.md"]);
+});
+
+test("does not read project files after the budget is exhausted", async (t) => {
+  const root = await createRepo();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const nested = join(root, "apps/web");
+  const unreadable = join(nested, "AGENTS.md");
+  await writeFile(join(root, "AGENTS.md"), "root");
+  await writeFile(unreadable, "child");
+  await chmod(unreadable, 0o000);
+
+  try {
+    const result = await discoverCodex({
+      cwd: nested,
+      target: join(nested, "file.ts"),
+      config: codexConfig(join(root, "home/.codex"), { maxBytes: 4 }),
+    });
+
+    assert.deepEqual(result.instructions.map((file) => file.content), ["root"]);
+    assert.deepEqual(result.skippedInstructions.map((file) => file.displayPath), ["./apps/web/AGENTS.md"]);
+  } finally {
+    await chmod(unreadable, 0o600);
+  }
 });

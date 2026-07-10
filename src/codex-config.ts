@@ -38,15 +38,18 @@ export async function loadCodexConfig(options: LoadCodexConfigOptions): Promise<
   }
 
   try {
-    const value = parse(text);
+    const value = parse(text, { integersAsBigInt: true });
     const fallbackValue = value.project_doc_fallback_filenames;
     const maxValue = value.project_doc_max_bytes;
     const markerValue = value.project_root_markers;
     const fallbackFilenames = fallbackValue === undefined
       ? []
       : [...new Set(stringArray(fallbackValue, "project_doc_fallback_filenames").map((name) => name.trim()).filter(Boolean))];
-    if (maxValue !== undefined && (!Number.isSafeInteger(maxValue) || Number(maxValue) < 0)) {
-      throw new Error("project_doc_max_bytes must be a non-negative integer");
+    if (
+      maxValue !== undefined &&
+      (typeof maxValue !== "bigint" || maxValue < 0n || maxValue > BigInt(Number.MAX_SAFE_INTEGER))
+    ) {
+      throw new Error("project_doc_max_bytes must be a non-negative safe integer");
     }
     const rootMarkers = markerValue === undefined
       ? [".git"]

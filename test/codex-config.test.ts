@@ -63,6 +63,23 @@ test("rejects invalid supported field types", async (t) => {
 
   await assert.rejects(
     loadCodexConfig({ userHome: codexHome, codexHome }),
-    /project_doc_max_bytes must be a non-negative integer/,
+    /project_doc_max_bytes must be a non-negative safe integer/,
   );
 });
+
+for (const [name, value] of [
+  ["float", "1.0"],
+  ["negative integer", "-1"],
+  ["unsafe integer", "9007199254740992"],
+] as const) {
+  test(`rejects ${name} project_doc_max_bytes`, async (t) => {
+    const codexHome = await mkdtemp(join(tmpdir(), "harness-map-codex-"));
+    t.after(() => rm(codexHome, { recursive: true, force: true }));
+    await writeFile(join(codexHome, "config.toml"), `project_doc_max_bytes = ${value}`);
+
+    await assert.rejects(
+      loadCodexConfig({ userHome: codexHome, codexHome }),
+      /project_doc_max_bytes must be a non-negative safe integer/,
+    );
+  });
+}
