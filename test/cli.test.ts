@@ -55,6 +55,8 @@ test("explain --json emits stable parseable output", async (t) => {
   assert.equal(value.agent, "codex");
   assert.equal(value.target, "src/Home.tsx");
   assert.equal(value.budgetBytes, 32768);
+  assert.equal(value.instructions[0].effectiveBytes, value.instructions[0].bytes);
+  assert.equal(value.instructions[0].truncated, false);
   assert.deepEqual(Object.keys(value), [
     "agent",
     "target",
@@ -68,6 +70,52 @@ test("explain --json emits stable parseable output", async (t) => {
     "overrides",
     "warnings",
   ]);
+});
+
+test("explain uses the explicit Codex home", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-cli-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const userHome = join(root, "home");
+  const codexHome = join(root, "custom-codex");
+  await mkdir(join(root, ".git"));
+  await mkdir(join(root, "src"));
+  await mkdir(join(userHome, ".codex"), { recursive: true });
+  await mkdir(codexHome);
+  await writeFile(join(userHome, ".codex/AGENTS.md"), "default");
+  await writeFile(join(codexHome, "AGENTS.md"), "custom");
+  const stdout: string[] = [];
+
+  const code = await run(
+    ["explain", "src/Home.tsx", "--json"],
+    { stdout: (value) => stdout.push(value), stderr: () => undefined },
+    { processCwd: root, home: userHome, codexHome },
+  );
+  const value = JSON.parse(stdout.join(""));
+
+  assert.equal(code, 0);
+  assert.equal(value.instructions[0].path, join(codexHome, "AGENTS.md"));
+});
+
+test("invalid Codex config exits with its path", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-cli-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const codexHome = join(root, "codex");
+  await mkdir(join(root, ".git"));
+  await mkdir(codexHome);
+  const configPath = join(codexHome, "config.toml");
+  await writeFile(configPath, "project_doc_max_bytes = [");
+  const stdout: string[] = [];
+  const stderr: string[] = [];
+
+  const code = await run(
+    ["tree", "--json"],
+    { stdout: (value) => stdout.push(value), stderr: (value) => stderr.push(value) },
+    { processCwd: root, home: join(root, "home"), codexHome },
+  );
+
+  assert.equal(code, 1);
+  assert.deepEqual(stdout, []);
+  assert.match(stderr.join(""), new RegExp(configPath));
 });
 
 test("tree, budget, and doctor expose repository JSON contracts", async (t) => {
