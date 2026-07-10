@@ -6,7 +6,8 @@ import { join } from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
 
-import { discoverCodex, discoverInstructionFiles } from "../src/codex.js";
+import type { CodexConfig } from "../src/codex-config.js";
+import { discoverCodex, discoverInstructionFiles, findProjectRoot } from "../src/codex.js";
 
 const execFile = promisify(execFileCallback);
 
@@ -15,6 +16,17 @@ async function createRepo(): Promise<string> {
   await mkdir(join(root, ".git"));
   await mkdir(join(root, "apps/web/src"), { recursive: true });
   return root;
+}
+
+function codexConfig(codexHome: string, overrides: Partial<CodexConfig> = {}): CodexConfig {
+  return {
+    codexHome,
+    configPath: join(codexHome, "config.toml"),
+    fallbackFilenames: [],
+    maxBytes: 32768,
+    rootMarkers: [".git"],
+    ...overrides,
+  };
 }
 
 test("orders global and project instructions from parent to child", async (t) => {
@@ -29,7 +41,7 @@ test("orders global and project instructions from parent to child", async (t) =>
   const result = await discoverCodex({
     cwd: join(root, "apps/web/src"),
     target: join(root, "apps/web/src/Home.tsx"),
-    home,
+    config: codexConfig(join(home, ".codex")),
   });
 
   assert.deepEqual(result.instructions.map((file) => file.content), ["global", "root", "web"]);
@@ -46,7 +58,7 @@ test("uses AGENTS.override.md instead of AGENTS.md in one directory", async (t) 
   const result = await discoverCodex({
     cwd: root,
     target: join(root, "file.ts"),
-    home: join(root, "home"),
+    config: codexConfig(join(root, "home/.codex")),
   });
 
   assert.deepEqual(result.instructions.map((file) => file.content), ["override"]);
@@ -61,12 +73,16 @@ test("prefers global override and ignores blank instructions", async (t) => {
   await writeFile(join(home, ".codex/AGENTS.override.md"), "override");
   await writeFile(join(root, "AGENTS.md"), "  \n");
 
-  const result = await discoverCodex({ cwd: root, target: join(root, "file.ts"), home });
+  const result = await discoverCodex({
+    cwd: root,
+    target: join(root, "file.ts"),
+    config: codexConfig(join(home, ".codex")),
+  });
 
   assert.deepEqual(result.instructions.map((file) => file.content), ["override"]);
 });
 
-test("falls back to AGENTS.md when override is blank", async (t) => {
+test("blank project override shadows AGENTS.md", async (t) => {
   const root = await createRepo();
   t.after(() => rm(root, { recursive: true, force: true }));
   await writeFile(join(root, "AGENTS.md"), "regular");
@@ -75,10 +91,38 @@ test("falls back to AGENTS.md when override is blank", async (t) => {
   const result = await discoverCodex({
     cwd: root,
     target: join(root, "file.ts"),
-    home: join(root, "home"),
+    config: codexConfig(join(root, "home/.codex")),
   });
 
-  assert.deepEqual(result.instructions.map((file) => file.content), ["regular"]);
+  assert.deepEqual(result.instructions.map((file) => file.content), []);
+});
+
+test("uses configured fallback filenames in order", async (t) => {
+  const root = await createRepo();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(join(root, "TEAM.md"), "team");
+  await writeFile(join(root, ".agents.md"), "agents");
+
+  const result = await discoverCodex({
+    cwd: root,
+    target: join(root, "file.ts"),
+    config: codexConfig(join(root, "home/.codex"), {
+      fallbackFilenames: ["TEAM.md", ".agents.md"],
+    }),
+  });
+
+  assert.deepEqual(result.instructions.map((file) => file.content), ["team"]);
+});
+
+test("finds the nearest configured project root", async (t) => {
+  const root = await createRepo();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(join(root, ".project-root"), "");
+  const cwd = join(root, "apps/web/src");
+
+  assert.equal(await findProjectRoot(cwd, [".project-root"]), root);
+  assert.equal(await findProjectRoot(cwd, ["missing.marker"]), cwd);
+  assert.equal(await findProjectRoot(cwd, []), cwd);
 });
 
 test("repository inventory excludes gitignored instruction files", async (t) => {
@@ -88,9 +132,10 @@ test("repository inventory excludes gitignored instruction files", async (t) => 
   await mkdir(join(root, "state"));
   await writeFile(join(root, ".gitignore"), "state/\n");
   await writeFile(join(root, "AGENTS.md"), "root");
+  await writeFile(join(root, "TEAM.md"), "team");
   await writeFile(join(root, "state/AGENTS.md"), "ignored");
 
-  const files = await discoverInstructionFiles(root);
+  const files = await discoverInstructionFiles(root, ["TEAM.md"]);
 
-  assert.deepEqual(files.map((file) => file.displayPath), ["./AGENTS.md"]);
+  assert.deepEqual(files.map((file) => file.displayPath), ["./AGENTS.md", "./TEAM.md"]);
 });

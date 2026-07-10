@@ -75,10 +75,13 @@ export function toBudgetJson(
   };
 }
 
-export function renderBudget(files: InstructionFile[]): string {
+export function renderBudget(
+  files: InstructionFile[],
+  budgetBytes = DEFAULT_BUDGET_BYTES,
+): string {
   const total = files.reduce((sum, file) => sum + file.bytes, 0);
   const lines = files.map((file) => `${file.displayPath}  ${formatSize(file.bytes)}`);
-  lines.push(`Total discovered size: ${formatSize(total)}`);
+  lines.push(`Total discovered size: ${formatSize(total)} / ${formatSize(budgetBytes)}`);
   return `${lines.join("\n")}\n`;
 }
 
