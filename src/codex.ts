@@ -1,4 +1,4 @@
-import { access, readFile, stat } from "node:fs/promises";
+import { access, readFile, readdir, stat } from "node:fs/promises";
 import { dirname, join, parse, relative, resolve, sep } from "node:path";
 
 export const DEFAULT_BUDGET_BYTES = 32 * 1024;
@@ -121,4 +121,29 @@ export async function discoverCodex(options: DiscoverOptions): Promise<CodexMap>
     overBudget: effectiveBytes > budgetBytes,
     instructions,
   };
+}
+
+export async function discoverInstructionFiles(root: string): Promise<InstructionFile[]> {
+  const projectRoot = resolve(root);
+  const files: InstructionFile[] = [];
+
+  async function visit(directory: string): Promise<void> {
+    const entries = await readdir(directory, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        if (entry.name !== ".git" && entry.name !== "node_modules") {
+          await visit(join(directory, entry.name));
+        }
+        continue;
+      }
+      if (!entry.isFile() || !["AGENTS.md", "AGENTS.override.md"].includes(entry.name)) continue;
+
+      const path = join(directory, entry.name);
+      const file = await loadInstruction(path, "project", `./${relative(projectRoot, path)}`);
+      if (file) files.push(file);
+    }
+  }
+
+  await visit(projectRoot);
+  return files.sort((left, right) => left.path.localeCompare(right.path));
 }

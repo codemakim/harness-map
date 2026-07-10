@@ -55,3 +55,40 @@ test("explain --json emits stable parseable output", async (t) => {
     "warnings",
   ]);
 });
+
+test("tree, budget, and doctor expose repository JSON contracts", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-commands-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, ".git"));
+  await mkdir(join(root, "nested"));
+  await writeFile(join(root, "AGENTS.md"), "Read docs/missing.md");
+  await writeFile(join(root, "nested/AGENTS.override.md"), "Run pnpm check");
+  await writeFile(join(root, "package.json"), JSON.stringify({ scripts: {} }));
+
+  async function json(command: string): Promise<Record<string, unknown>> {
+    const stdout: string[] = [];
+    const code = await run(
+      [command, "--json"],
+      { stdout: (value) => stdout.push(value), stderr: () => undefined },
+      { processCwd: root, home: join(root, "home") },
+    );
+    assert.equal(code, 0);
+    return JSON.parse(stdout.join(""));
+  }
+
+  const tree = await json("tree");
+  assert.equal(tree.command, "tree");
+  assert.equal(
+    (tree.files as Array<{ displayPath: string }>).some((item) => item.displayPath === "./AGENTS.md"),
+    true,
+  );
+
+  const budget = await json("budget");
+  assert.equal(budget.command, "budget");
+  assert.equal(typeof budget.totalBytes, "number");
+
+  const doctor = await json("doctor");
+  assert.equal(doctor.command, "doctor");
+  assert.equal(Array.isArray(doctor.warnings), true);
+  assert.equal((doctor.warnings as unknown[]).length, 2);
+});

@@ -4,9 +4,23 @@ import { dirname, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
 
-import { discoverCodex } from "./codex.js";
-import { inspectInstructions } from "./inspect.js";
-import { renderExplain, toExplainJson } from "./output.js";
+import {
+  DEFAULT_BUDGET_BYTES,
+  discoverCodex,
+  discoverInstructionFiles,
+  findProjectRoot,
+} from "./codex.js";
+import { inspectInstructions, type Warning } from "./inspect.js";
+import {
+  renderBudget,
+  renderDoctor,
+  renderExplain,
+  renderTree,
+  toBudgetJson,
+  toDoctorJson,
+  toExplainJson,
+  toTreeJson,
+} from "./output.js";
 
 export interface CliIo {
   stdout(value: string): void;
@@ -64,6 +78,45 @@ export async function run(
           ? `${JSON.stringify(toExplainJson(map, inspection), null, 2)}\n`
           : renderExplain(map, inspection),
       );
+      return 0;
+    }
+
+    if (["tree", "budget", "doctor"].includes(command)) {
+      const { values, positionals } = parseArgs({
+        args: tokens,
+        allowPositionals: true,
+        options: { json: { type: "boolean", default: false } },
+      });
+      if (positionals.length) throw new Error(`${command} does not accept positional arguments`);
+
+      const root = await findProjectRoot(env.processCwd);
+      const files = await discoverInstructionFiles(root);
+      let terminal: string;
+      let json: object;
+
+      if (command === "tree") {
+        terminal = renderTree(files);
+        json = toTreeJson(files);
+      } else if (command === "budget") {
+        terminal = renderBudget(files);
+        json = toBudgetJson(files);
+      } else {
+        const inspection = await inspectInstructions(files, root);
+        const warnings: Warning[] = [
+          ...inspection.warnings,
+          ...files
+            .filter((file) => file.bytes > DEFAULT_BUDGET_BYTES)
+            .map((file) => ({
+              kind: "instruction-over-budget" as const,
+              message: `${file.displayPath} exceeds the 32 KiB instruction budget`,
+              source: file.displayPath,
+            })),
+        ];
+        terminal = renderDoctor(warnings);
+        json = toDoctorJson(warnings);
+      }
+
+      io.stdout(values.json ? `${JSON.stringify(json, null, 2)}\n` : terminal);
       return 0;
     }
 
