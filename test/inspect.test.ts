@@ -88,6 +88,7 @@ test("checks only concrete local references and falls back to the project root",
     "Skill: .agents/skills/<skill-name>/SKILL.md.",
     "Import: @AGENTS.md.",
     "Templates: SOUL.md and USER.md.",
+    "Glob: content/**/*.mdx.",
     "Required: [missing](docs/missing.md).",
   ].join("\n");
   const files = [instruction(join(root, "vault/AGENTS.md"), content, 1)];

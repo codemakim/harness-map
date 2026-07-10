@@ -125,6 +125,10 @@ export async function inspectInstructions(
         reference.startsWith("@") ||
         reference.includes("<") ||
         reference.includes(">") ||
+        reference.includes("*") ||
+        reference.includes("?") ||
+        reference.includes("[") ||
+        reference.includes("{") ||
         /^[a-z]+:\/\//i.test(reference) ||
         isAbsolute(reference)
       ) {
