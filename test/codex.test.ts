@@ -61,3 +61,18 @@ test("prefers global override and ignores blank instructions", async (t) => {
 
   assert.deepEqual(result.instructions.map((file) => file.content), ["override"]);
 });
+
+test("falls back to AGENTS.md when override is blank", async (t) => {
+  const root = await createRepo();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(join(root, "AGENTS.md"), "regular");
+  await writeFile(join(root, "AGENTS.override.md"), " \n");
+
+  const result = await discoverCodex({
+    cwd: root,
+    target: join(root, "file.ts"),
+    home: join(root, "home"),
+  });
+
+  assert.deepEqual(result.instructions.map((file) => file.content), ["regular"]);
+});

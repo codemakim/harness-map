@@ -63,7 +63,11 @@ function directoriesBetween(root: string, cwd: string): string[] {
 async function selectInstruction(directory: string): Promise<string | undefined> {
   for (const name of ["AGENTS.override.md", "AGENTS.md"]) {
     const path = join(directory, name);
-    if (await exists(path)) return path;
+    try {
+      if ((await readFile(path, "utf8")).trim()) return path;
+    } catch {
+      // Try the next supported filename.
+    }
   }
   return undefined;
 }
