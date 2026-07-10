@@ -27,7 +27,8 @@ apps/web/src/pages/Home.tsx
 4. ./apps/web/src/AGENTS.override.md
    - 0.9 KiB
 
-Effective size: 9.0 KiB / 32 KiB
+Total visible size: 9.0 KiB
+Project budget: 7.8 KiB / 32.0 KiB
 
 Overrides:
 - Package manager: npm -> pnpm
@@ -74,8 +75,10 @@ npx harness-map doctor
 Add `--json` to any command for machine-readable output. `explain` also accepts
 `--cwd <dir>` and `--agent codex`.
 
-The project root is the nearest ancestor containing `.git`. Without one,
-`harness-map` uses the effective working directory as the root.
+`harness-map` reads `CODEX_HOME`, then `config.toml` from the active Codex home.
+It applies `project_doc_fallback_filenames`, `project_doc_max_bytes`, and
+`project_root_markers`. Without configured root markers it inspects only the
+effective working directory.
 
 ## v0.1 Scope
 
@@ -87,6 +90,8 @@ First target: Codex only.
 - Show actual application order
 - Calculate effective instruction size
 - Respect the default 32 KiB instruction budget
+- Read Codex discovery settings from `config.toml`
+- Report truncated and budget-skipped project instructions
 - Warn on referenced files that do not exist
 - Warn on documented `npm` / `pnpm` scripts that are missing from `package.json`
 - Support terminal and JSON output
@@ -153,4 +158,5 @@ npm install
 npm run check
 ```
 
-The package has no runtime dependencies.
+The package has one runtime dependency: `smol-toml` for correct Codex config
+parsing.
