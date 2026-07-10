@@ -12,9 +12,11 @@ function instruction(path: string, content: string, precedence: number): Instruc
     path,
     displayPath: path,
     bytes: Buffer.byteLength(content),
+    effectiveBytes: Buffer.byteLength(content),
     content,
     kind: "project",
     precedence,
+    truncated: false,
   };
 }
 

@@ -139,3 +139,48 @@ test("repository inventory excludes gitignored instruction files", async (t) => 
 
   assert.deepEqual(files.map((file) => file.displayPath), ["./AGENTS.md", "./TEAM.md"]);
 });
+
+test("global instructions do not consume the project budget", async (t) => {
+  const root = await createRepo();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const codexHome = join(root, "home/.codex");
+  await mkdir(codexHome, { recursive: true });
+  await writeFile(join(codexHome, "AGENTS.md"), "global");
+  await writeFile(join(root, "AGENTS.md"), "root");
+
+  const result = await discoverCodex({
+    cwd: root,
+    target: join(root, "file.ts"),
+    config: codexConfig(codexHome, { maxBytes: 4 }),
+  });
+
+  assert.equal(result.projectEffectiveBytes, 4);
+  assert.equal(result.effectiveBytes, 10);
+  assert.equal(result.overBudget, false);
+});
+
+test("truncates the final project file and skips later files", async (t) => {
+  const root = await createRepo();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(join(root, "AGENTS.md"), "123456");
+  await writeFile(join(root, "apps/web/AGENTS.md"), Buffer.from([0xe2, 0x82, 0xac, 0x78]));
+  await writeFile(join(root, "apps/web/src/AGENTS.md"), "later");
+
+  const result = await discoverCodex({
+    cwd: join(root, "apps/web/src"),
+    target: join(root, "apps/web/src/file.ts"),
+    config: codexConfig(join(root, "home/.codex"), { maxBytes: 8 }),
+  });
+
+  assert.deepEqual(result.instructions.map((file) => file.content), ["123456", "�"]);
+  assert.deepEqual(
+    result.instructions.map(({ bytes, effectiveBytes, truncated }) => ({ bytes, effectiveBytes, truncated })),
+    [
+      { bytes: 6, effectiveBytes: 6, truncated: false },
+      { bytes: 4, effectiveBytes: 2, truncated: true },
+    ],
+  );
+  assert.equal(result.projectEffectiveBytes, 8);
+  assert.equal(result.overBudget, true);
+  assert.deepEqual(result.skippedInstructions.map((file) => file.displayPath), ["./apps/web/src/AGENTS.md"]);
+});

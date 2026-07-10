@@ -61,8 +61,10 @@ test("explain --json emits stable parseable output", async (t) => {
     "cwd",
     "budgetBytes",
     "effectiveBytes",
+    "projectEffectiveBytes",
     "overBudget",
     "instructions",
+    "skippedInstructions",
     "overrides",
     "warnings",
   ]);

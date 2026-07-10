@@ -14,8 +14,10 @@ export function toExplainJson(map: CodexMap, inspection: Inspection): object {
     cwd: map.cwd,
     budgetBytes: map.budgetBytes,
     effectiveBytes: map.effectiveBytes,
+    projectEffectiveBytes: map.projectEffectiveBytes,
     overBudget: map.overBudget,
-    instructions: map.instructions.map(({ content: _content, ...file }) => file),
+    instructions: map.instructions.map(publicFile),
+    skippedInstructions: map.skippedInstructions.map(publicFile),
     overrides: inspection.overrides,
     warnings: inspection.warnings,
   };
@@ -25,10 +27,24 @@ export function renderExplain(map: CodexMap, inspection: Inspection): string {
   const lines = ["Effective instructions for:", relative(map.projectRoot, map.target), ""];
 
   for (const file of map.instructions) {
-    lines.push(`${file.precedence}. ${file.displayPath}`, `   - ${formatSize(file.bytes)}`, "");
+    const size = file.truncated
+      ? `${formatSize(file.effectiveBytes)} of ${formatSize(file.bytes)} (truncated)`
+      : formatSize(file.effectiveBytes);
+    lines.push(`${file.precedence}. ${file.displayPath}`, `   - ${size}`, "");
   }
 
-  lines.push(`Effective size: ${formatSize(map.effectiveBytes)} / ${formatSize(map.budgetBytes)}`);
+  lines.push(
+    `Total visible size: ${formatSize(map.effectiveBytes)}`,
+    `Project budget: ${formatSize(map.projectEffectiveBytes)} / ${formatSize(map.budgetBytes)}`,
+  );
+
+  if (map.skippedInstructions.length) {
+    lines.push(
+      "",
+      "Skipped by budget:",
+      ...map.skippedInstructions.map((file) => `- ${file.displayPath} (${formatSize(file.bytes)})`),
+    );
+  }
 
   if (inspection.overrides.length) {
     lines.push(

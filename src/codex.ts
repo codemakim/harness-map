@@ -13,9 +13,11 @@ export interface InstructionFile {
   path: string;
   displayPath: string;
   bytes: number;
+  effectiveBytes: number;
   content: string;
   kind: "global" | "project";
   precedence: number;
+  truncated: boolean;
 }
 
 export interface CodexMap {
@@ -25,8 +27,10 @@ export interface CodexMap {
   projectRoot: string;
   budgetBytes: number;
   effectiveBytes: number;
+  projectEffectiveBytes: number;
   overBudget: boolean;
   instructions: InstructionFile[];
+  skippedInstructions: InstructionFile[];
 }
 
 export interface DiscoverOptions {
@@ -97,16 +101,19 @@ async function loadInstruction(
   displayPath: string,
 ): Promise<InstructionFile | undefined> {
   if (!(await stat(path)).isFile()) return undefined;
-  const content = await readFile(path, "utf8");
+  const data = await readFile(path);
+  const content = data.toString("utf8");
   if (!content.trim()) return undefined;
 
   return {
     path,
     displayPath,
-    bytes: Buffer.byteLength(content),
+    bytes: data.length,
+    effectiveBytes: data.length,
     content,
     kind,
     precedence: 0,
+    truncated: false,
   };
 }
 
@@ -114,7 +121,8 @@ export async function discoverCodex(options: DiscoverOptions): Promise<CodexMap>
   const cwd = resolve(options.cwd);
   const target = resolve(options.target);
   const projectRoot = await findProjectRoot(cwd, options.config.rootMarkers);
-  const candidates: InstructionFile[] = [];
+  let globalInstruction: InstructionFile | undefined;
+  const projectCandidates: InstructionFile[] = [];
 
   const globalPath = await selectInstruction(
     options.config.codexHome,
@@ -127,7 +135,7 @@ export async function discoverCodex(options: DiscoverOptions): Promise<CodexMap>
       ? `~/.codex/${name}`
       : globalPath;
     const file = await loadInstruction(globalPath, "global", displayPath);
-    if (file) candidates.push(file);
+    if (file) globalInstruction = file;
   }
 
   const filenames = instructionFilenames(options.config.fallbackFilenames);
@@ -135,12 +143,48 @@ export async function discoverCodex(options: DiscoverOptions): Promise<CodexMap>
     const path = await selectInstruction(directory, filenames, false);
     if (!path) continue;
     const file = await loadInstruction(path, "project", `./${relative(projectRoot, path)}`);
-    if (file) candidates.push(file);
+    if (file) projectCandidates.push(file);
   }
 
-  const instructions = candidates.map((file, index) => ({ ...file, precedence: index + 1 }));
-  const effectiveBytes = instructions.reduce((total, file) => total + file.bytes, 0);
   const budgetBytes = options.config.maxBytes;
+  let remainingBytes = budgetBytes;
+  const projectInstructions: InstructionFile[] = [];
+  const skippedInstructions: InstructionFile[] = [];
+
+  for (const file of projectCandidates) {
+    if (remainingBytes === 0) {
+      skippedInstructions.push({ ...file, effectiveBytes: 0 });
+      continue;
+    }
+
+    const data = await readFile(file.path);
+    const effectiveData = data.subarray(0, Math.min(data.length, remainingBytes));
+    const content = effectiveData.toString("utf8");
+    if (!content.trim()) continue;
+
+    projectInstructions.push({
+      ...file,
+      content,
+      effectiveBytes: effectiveData.length,
+      truncated: data.length > effectiveData.length,
+    });
+    remainingBytes -= effectiveData.length;
+  }
+
+  const instructions = [
+    ...(globalInstruction ? [globalInstruction] : []),
+    ...projectInstructions,
+  ].map((file, index) => ({ ...file, precedence: index + 1 }));
+  const skipped = skippedInstructions.map((file, index) => ({
+    ...file,
+    precedence: instructions.length + index + 1,
+  }));
+  const projectEffectiveBytes = projectInstructions.reduce(
+    (total, file) => total + file.effectiveBytes,
+    0,
+  );
+  const effectiveBytes = instructions.reduce((total, file) => total + file.effectiveBytes, 0);
+  const overBudget = projectInstructions.some((file) => file.truncated) || skipped.length > 0;
 
   return {
     agent: "codex",
@@ -149,8 +193,10 @@ export async function discoverCodex(options: DiscoverOptions): Promise<CodexMap>
     projectRoot,
     budgetBytes,
     effectiveBytes,
-    overBudget: effectiveBytes > budgetBytes,
+    projectEffectiveBytes,
+    overBudget,
     instructions,
+    skippedInstructions: skipped,
   };
 }
 
