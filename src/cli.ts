@@ -2,7 +2,6 @@
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { fileURLToPath } from "node:url";
 
 import {
   DEFAULT_BUDGET_BYTES,
@@ -126,8 +125,4 @@ export async function run(
     io.stderr(`Error: ${message}\n`);
     return 1;
   }
-}
-
-if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
-  process.exitCode = await run(process.argv.slice(2));
 }

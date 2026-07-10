@@ -4,7 +4,7 @@
   "description": "Show what instructions an agent actually reads for a file.",
   "type": "module",
   "bin": {
-    "harness-map": "dist/cli.js"
+    "harness-map": "dist/bin.js"
   },
   "files": [
     "dist",

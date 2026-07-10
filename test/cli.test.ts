@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
+import { execFile as execFileCallback } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { promisify } from "node:util";
 
 import { run } from "../src/cli.js";
+
+const execFile = promisify(execFileCallback);
 
 test("prints help", async () => {
   const stdout: string[] = [];
@@ -17,6 +21,14 @@ test("prints help", async () => {
   assert.equal(code, 0);
   assert.match(stdout.join(""), /harness-map explain <file>/);
   assert.deepEqual(stderr, []);
+});
+
+test("bin entrypoint executes the CLI", async () => {
+  const { stdout } = await execFile(process.execPath, ["--import", "tsx", "src/bin.ts", "--help"], {
+    cwd: join(import.meta.dirname, ".."),
+  });
+
+  assert.match(stdout, /harness-map explain <file>/);
 });
 
 test("explain --json emits stable parseable output", async (t) => {
