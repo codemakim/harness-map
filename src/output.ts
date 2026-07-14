@@ -1,13 +1,14 @@
 import { relative } from "node:path";
 
 import { DEFAULT_BUDGET_BYTES, type CodexMap, type InstructionFile } from "./codex.js";
+import type { ClaudeMap } from "./claude.js";
 import type { Inspection, Warning } from "./inspect.js";
 
 export function formatSize(bytes: number): string {
   return `${(bytes / 1024).toFixed(1)} KiB`;
 }
 
-export function toExplainJson(map: CodexMap, inspection: Inspection): object {
+export function toExplainJson(map: CodexMap | ClaudeMap, inspection: Inspection): object {
   return {
     agent: map.agent,
     target: relative(map.projectRoot, map.target),
@@ -23,7 +24,7 @@ export function toExplainJson(map: CodexMap, inspection: Inspection): object {
   };
 }
 
-export function renderExplain(map: CodexMap, inspection: Inspection): string {
+export function renderExplain(map: CodexMap | ClaudeMap, inspection: Inspection): string {
   const lines = ["Effective instructions for:", relative(map.projectRoot, map.target), ""];
 
   for (const file of map.instructions) {
@@ -33,9 +34,15 @@ export function renderExplain(map: CodexMap, inspection: Inspection): string {
     lines.push(`${file.precedence}. ${file.displayPath}`, `   - ${size}`, "");
   }
 
+  if (map.agent === "claude" && !map.instructions.length) {
+    lines.push("No instruction files found.", "");
+  }
+
+  lines.push(`Total visible size: ${formatSize(map.effectiveBytes)}`);
   lines.push(
-    `Total visible size: ${formatSize(map.effectiveBytes)}`,
-    `Project budget: ${formatSize(map.projectEffectiveBytes)} / ${formatSize(map.budgetBytes)}`,
+    map.budgetBytes === null
+      ? "Project budget: not defined"
+      : `Project budget: ${formatSize(map.projectEffectiveBytes)} / ${formatSize(map.budgetBytes)}`,
   );
 
   if (map.skippedInstructions.length) {

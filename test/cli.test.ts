@@ -96,6 +96,49 @@ test("explain uses the explicit Codex home", async (t) => {
   assert.equal(value.instructions[0].path, join(codexHome, "AGENTS.md"));
 });
 
+test("explain supports the Claude instruction stack", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-cli-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const userHome = join(root, "home");
+  await mkdir(join(root, ".git"));
+  await mkdir(join(root, "src"));
+  await mkdir(join(userHome, ".claude"), { recursive: true });
+  await writeFile(join(userHome, ".claude/CLAUDE.md"), "user");
+  await writeFile(join(root, "CLAUDE.md"), "project");
+  const stdout: string[] = [];
+
+  const code = await run(
+    ["explain", "src/Home.tsx", "--agent", "claude", "--json"],
+    { stdout: (value) => stdout.push(value), stderr: () => undefined },
+    { processCwd: root, home: userHome },
+  );
+  const value = JSON.parse(stdout.join(""));
+
+  assert.equal(code, 0);
+  assert.equal(value.agent, "claude");
+  assert.equal(value.budgetBytes, null);
+  assert.deepEqual(value.instructions.map((file: { content?: string; displayPath: string }) => file.displayPath), [
+    "~/.claude/CLAUDE.md",
+    "./CLAUDE.md",
+  ]);
+});
+
+test("explain names an empty instruction stack", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-cli-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, ".git"));
+  const stdout: string[] = [];
+
+  const code = await run(
+    ["explain", "game.ts", "--agent", "claude"],
+    { stdout: (value) => stdout.push(value), stderr: () => undefined },
+    { processCwd: root, home: join(root, "home") },
+  );
+
+  assert.equal(code, 0);
+  assert.match(stdout.join(""), /No instruction files found\./);
+});
+
 test("invalid Codex config exits with its path", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "harness-map-cli-"));
   t.after(() => rm(root, { recursive: true, force: true }));

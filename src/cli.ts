@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
+import { discoverClaude } from "./claude.js";
 import { loadCodexConfig } from "./codex-config.js";
 import {
   discoverCodex,
@@ -34,7 +35,7 @@ export interface CliEnv {
 }
 
 const help = `Usage:
-  harness-map explain <file> [--agent codex] [--cwd <dir>] [--json]
+  harness-map explain <file> [--agent codex|claude] [--cwd <dir>] [--json]
   harness-map tree [--json]
   harness-map budget [--json]
   harness-map doctor [--json]
@@ -60,7 +61,6 @@ export async function run(
   const [command, ...tokens] = argv;
 
   try {
-    const config = await loadCodexConfig({ userHome: env.home, codexHome: env.codexHome });
     if (command === "explain") {
       const { values, positionals } = parseArgs({
         args: tokens,
@@ -72,12 +72,20 @@ export async function run(
         },
       });
 
-      if (values.agent !== "codex") throw new Error(`Unsupported agent: ${values.agent}`);
+      if (values.agent !== "codex" && values.agent !== "claude") {
+        throw new Error(`Unsupported agent: ${values.agent}`);
+      }
       if (positionals.length !== 1) throw new Error("explain requires exactly one file");
 
       const target = resolve(env.processCwd, positionals[0]);
       const cwd = values.cwd ? resolve(env.processCwd, values.cwd) : dirname(target);
-      const map = await discoverCodex({ cwd, target, config });
+      const map = values.agent === "claude"
+        ? await discoverClaude({ cwd, target, userHome: env.home })
+        : await discoverCodex({
+            cwd,
+            target,
+            config: await loadCodexConfig({ userHome: env.home, codexHome: env.codexHome }),
+          });
       const inspection = await inspectInstructions(map.instructions, map.projectRoot);
       io.stdout(
         values.json
@@ -88,6 +96,7 @@ export async function run(
     }
 
     if (["tree", "budget", "doctor"].includes(command)) {
+      const config = await loadCodexConfig({ userHome: env.home, codexHome: env.codexHome });
       const { values, positionals } = parseArgs({
         args: tokens,
         allowPositionals: true,
