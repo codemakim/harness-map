@@ -1,5 +1,7 @@
 # harness-map
 
+[![CI](https://github.com/codemakim/harness-map/actions/workflows/ci.yml/badge.svg)](https://github.com/codemakim/harness-map/actions/workflows/ci.yml)
+
 Show what instructions an agent actually reads for a file.
 
 `harness-map` is a local CLI for debugging agent harness context. Given a file
@@ -8,7 +10,7 @@ they are read in, the effective size budget, and the simple drift that humans
 usually miss.
 
 ```sh
-npx harness-map explain apps/web/src/pages/Home.tsx --agent codex
+harness-map explain apps/web/src/pages/Home.tsx --agent codex
 ```
 
 ```text
@@ -53,12 +55,16 @@ That stack is powerful, but hard to inspect. A developer looking at
 `harness-map` exists to answer that question without calling an AI model and
 without touching the network.
 
-## Install
+## Try It Locally
 
-Requires Node.js 20 or newer.
+Requires Node.js 20 or newer. The npm package is not published yet.
 
 ```sh
-npx harness-map explain apps/web/src/pages/Home.tsx
+git clone https://github.com/codemakim/harness-map.git
+cd harness-map
+npm clean-install
+npm run build
+node dist/bin.js explain README.md
 ```
 
 The CLI reads local files only. It makes no AI or network calls.
@@ -66,10 +72,10 @@ The CLI reads local files only. It makes no AI or network calls.
 ## Usage
 
 ```sh
-npx harness-map tree
-npx harness-map explain apps/web/src/pages/Home.tsx
-npx harness-map budget
-npx harness-map doctor
+node dist/bin.js tree
+node dist/bin.js explain apps/web/src/pages/Home.tsx
+node dist/bin.js budget
+node dist/bin.js doctor
 ```
 
 Add `--json` to any command for machine-readable output. `explain` also accepts
@@ -77,12 +83,12 @@ Add `--json` to any command for machine-readable output. `explain` also accepts
 
 `harness-map` reads `CODEX_HOME`, then `config.toml` from the active Codex home.
 It applies `project_doc_fallback_filenames`, `project_doc_max_bytes`, and
-`project_root_markers`. Without configured root markers it inspects only the
-effective working directory.
+`project_root_markers`. An explicitly empty `project_root_markers` list limits
+project discovery to the effective working directory.
 
-## v0.1 Scope
+## v0.2 Scope
 
-First target: Codex only.
+Current adapter: Codex only.
 
 - Discover `AGENTS.md`
 - Prefer `AGENTS.override.md` over `AGENTS.md` in the same scope
@@ -154,7 +160,7 @@ Drift:
 ## Development
 
 ```sh
-npm install
+npm clean-install
 npm run check
 ```
 
