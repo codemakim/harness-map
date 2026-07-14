@@ -56,3 +56,41 @@ test("reports an empty Claude instruction stack", async (t) => {
   assert.deepEqual(result.instructions, []);
   assert.equal(result.effectiveBytes, 0);
 });
+
+test("loads unconditional and path-matched Claude rules", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-claude-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const userHome = join(root, "home");
+  const project = join(root, "project");
+  await mkdir(join(userHome, ".claude/rules"), { recursive: true });
+  await mkdir(join(project, ".git"), { recursive: true });
+  await mkdir(join(project, ".claude/rules/game"), { recursive: true });
+  await mkdir(join(project, "src/game"), { recursive: true });
+  await writeFile(join(userHome, ".claude/rules/style.md"), "user rule");
+  await writeFile(join(project, ".claude/rules/general.md"), "general rule");
+  await writeFile(
+    join(project, ".claude/rules/game/typescript.md"),
+    '---\npaths:\n  - "src/game/**/*.{ts,tsx}"\n---\ngame rule',
+  );
+  await writeFile(
+    join(project, ".claude/rules/docs.md"),
+    '---\npaths:\n  - "docs/**/*.md"\n---\ndocs rule',
+  );
+
+  const result = await discoverClaude({
+    cwd: join(project, "src/game"),
+    target: join(project, "src/game/Battle.ts"),
+    userHome,
+  });
+
+  assert.deepEqual(result.instructions.map((file) => file.content), [
+    "user rule",
+    "general rule",
+    "game rule",
+  ]);
+  assert.deepEqual(result.instructions.map((file) => file.displayPath), [
+    "~/.claude/rules/style.md",
+    "./.claude/rules/general.md",
+    "./.claude/rules/game/typescript.md",
+  ]);
+});

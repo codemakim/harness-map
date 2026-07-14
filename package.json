@@ -41,6 +41,8 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "smol-toml": "^1.7.0"
+    "minimatch": "^10.2.5",
+    "smol-toml": "^1.7.0",
+    "yaml": "^2.9.0"
   }
 }
