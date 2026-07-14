@@ -197,3 +197,63 @@ test("tree, budget, and doctor expose repository JSON contracts", async (t) => {
   assert.equal(Array.isArray(doctor.warnings), true);
   assert.equal((doctor.warnings as unknown[]).length, 2);
 });
+
+test("tree, budget, and doctor support Claude files", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-claude-commands-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, ".git"));
+  await mkdir(join(root, ".claude/rules"), { recursive: true });
+  await writeFile(join(root, "CLAUDE.md"), "@AGENTS.md");
+  await writeFile(join(root, "AGENTS.md"), "Read docs/missing.md");
+  await writeFile(join(root, ".claude/rules/test.md"), "Run pnpm test:game");
+  await writeFile(join(root, "package.json"), JSON.stringify({ scripts: {} }));
+
+  async function json(command: string): Promise<Record<string, unknown>> {
+    const stdout: string[] = [];
+    const code = await run(
+      [command, "--agent", "claude", "--json"],
+      { stdout: (value) => stdout.push(value), stderr: () => undefined },
+      { processCwd: root, home: join(root, "home") },
+    );
+    assert.equal(code, 0);
+    return JSON.parse(stdout.join(""));
+  }
+
+  const tree = await json("tree");
+  assert.equal(tree.agent, "claude");
+  assert.deepEqual(
+    (tree.files as Array<{ displayPath: string }>).map((file) => file.displayPath),
+    ["./.claude/rules/test.md", "./CLAUDE.md"],
+  );
+
+  const budget = await json("budget");
+  assert.equal(budget.agent, "claude");
+  assert.equal(budget.budgetBytes, null);
+  assert.deepEqual(budget.overBudgetFiles, []);
+
+  const doctor = await json("doctor");
+  assert.equal(doctor.agent, "claude");
+  assert.equal((doctor.warnings as unknown[]).length, 2);
+});
+
+test("Claude doctor resolves imported content from its source directory", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-claude-doctor-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, ".git"));
+  await mkdir(join(root, "docs"));
+  await writeFile(join(root, "CLAUDE.md"), "@docs/rules.md");
+  await writeFile(join(root, "docs/rules.md"), "Read [guide](missing.md). Run npm run docs.");
+  await writeFile(join(root, "docs/package.json"), JSON.stringify({ scripts: { docs: "echo ok" } }));
+  const stdout: string[] = [];
+
+  const code = await run(
+    ["doctor", "--agent", "claude", "--json"],
+    { stdout: (value) => stdout.push(value), stderr: () => undefined },
+    { processCwd: root, home: join(root, "home") },
+  );
+  const value = JSON.parse(stdout.join(""));
+
+  assert.equal(code, 0);
+  assert.equal(value.warnings.length, 1);
+  assert.equal(value.warnings[0].source, "docs/rules.md");
+});

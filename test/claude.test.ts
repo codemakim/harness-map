@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
+import { execFile as execFileCallback } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { promisify } from "node:util";
 
-import { discoverClaude } from "../src/claude.js";
+import { discoverClaude, discoverClaudeInstructionFiles } from "../src/claude.js";
+
+const execFile = promisify(execFileCallback);
 
 test("orders Claude instructions from user scope to target directory", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "harness-map-claude-"));
@@ -151,4 +155,20 @@ test("limits Claude imports to four hops", async (t) => {
 
   assert.equal(file.content, "@five.md");
   assert.deepEqual(file.imports?.map((item) => item.depth), [1, 2, 3, 4]);
+});
+
+test("Claude inventory excludes gitignored files and imported dependencies", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-claude-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await execFile("git", ["init", "-q"], { cwd: root });
+  await mkdir(join(root, "ignored"));
+  await writeFile(join(root, ".gitignore"), "ignored/\n");
+  await writeFile(join(root, "CLAUDE.md"), "@AGENTS.md");
+  await writeFile(join(root, "AGENTS.md"), "shared");
+  await writeFile(join(root, "ignored/CLAUDE.md"), "ignored");
+
+  const files = await discoverClaudeInstructionFiles(root, join(root, "home"));
+
+  assert.deepEqual(files.map((file) => file.displayPath), ["./CLAUDE.md"]);
+  assert.deepEqual(files[0].imports?.map((item) => item.displayPath), ["./AGENTS.md"]);
 });

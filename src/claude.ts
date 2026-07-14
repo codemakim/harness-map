@@ -1,5 +1,7 @@
+import { execFile as execFileCallback } from "node:child_process";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
+import { promisify } from "node:util";
 
 import { minimatch } from "minimatch";
 import { parse as parseYaml } from "yaml";
@@ -9,6 +11,8 @@ import {
   type ImportedInstruction,
   type InstructionFile,
 } from "./codex.js";
+
+const execFile = promisify(execFileCallback);
 
 export interface ClaudeMap {
   agent: "claude";
@@ -260,6 +264,7 @@ async function expandImports(
         displayPath: displayImport(imported.path, projectRoot, userHome),
         bytes: data.length,
         depth: depth + 1,
+        content: data.toString("utf8"),
       }, ...nested.imports);
     }
     output.push(line.slice(cursor));
@@ -267,6 +272,24 @@ async function expandImports(
   }
 
   return { content: output.join(""), imports };
+}
+
+async function expandInstructionFiles(
+  files: InstructionFile[],
+  projectRoot: string,
+  userHome: string,
+): Promise<InstructionFile[]> {
+  return Promise.all(files.map(async (file, index) => {
+    const expanded = await expandImports(file.path, file.content, projectRoot, userHome);
+    return {
+      ...file,
+      content: expanded.content,
+      effectiveBytes: Buffer.byteLength(expanded.content),
+      precedence: index + 1,
+      sourceContent: file.content,
+      ...(expanded.imports.length ? { imports: expanded.imports } : {}),
+    };
+  }));
 }
 
 export async function discoverClaude(options: DiscoverClaudeOptions): Promise<ClaudeMap> {
@@ -310,21 +333,7 @@ export async function discoverClaude(options: DiscoverClaudeOptions): Promise<Cl
     if (localFile) files.push(localFile);
   }
 
-  const instructions = await Promise.all(files.map(async (file, index) => {
-    const expanded = await expandImports(
-      file.path,
-      file.content,
-      projectRoot,
-      options.userHome,
-    );
-    return {
-      ...file,
-      content: expanded.content,
-      effectiveBytes: Buffer.byteLength(expanded.content),
-      precedence: index + 1,
-      ...(expanded.imports.length ? { imports: expanded.imports } : {}),
-    };
-  }));
+  const instructions = await expandInstructionFiles(files, projectRoot, options.userHome);
   const projectEffectiveBytes = instructions
     .filter((file) => file.kind === "project")
     .reduce((total, file) => total + file.effectiveBytes, 0);
@@ -341,4 +350,115 @@ export async function discoverClaude(options: DiscoverClaudeOptions): Promise<Cl
     instructions,
     skippedInstructions: [],
   };
+}
+
+function isClaudeInstruction(relativePath: string): boolean {
+  const name = relativePath.split("/").at(-1);
+  return (
+    name === "CLAUDE.md" ||
+    name === "CLAUDE.local.md" ||
+    /(^|\/)\.claude\/rules\/.*\.md$/.test(relativePath)
+  );
+}
+
+export function claudeInspectionFiles(
+  files: InstructionFile[],
+  projectRoot: string,
+): InstructionFile[] {
+  const result: InstructionFile[] = [];
+  const seen = new Set<string>();
+  const add = (file: InstructionFile): void => {
+    if (seen.has(file.path)) return;
+    seen.add(file.path);
+    result.push({ ...file, precedence: result.length + 1 });
+  };
+
+  for (const file of files) {
+    const { imports, sourceContent, ...source } = file;
+    add({ ...source, content: sourceContent ?? file.content });
+    for (const imported of imports ?? []) {
+      if (imported.content === undefined) continue;
+      add({
+        path: imported.path,
+        displayPath: imported.displayPath,
+        bytes: imported.bytes,
+        effectiveBytes: Buffer.byteLength(imported.content),
+        content: imported.content,
+        kind: isInside(projectRoot, imported.path) ? "project" : "global",
+        precedence: 0,
+        truncated: false,
+      });
+    }
+  }
+  return result;
+}
+
+export async function discoverClaudeInstructionFiles(
+  root: string,
+  userHome: string,
+): Promise<InstructionFile[]> {
+  const projectRoot = resolve(root);
+  let relativePaths: string[] = [];
+  try {
+    const { stdout } = await execFile(
+      "git",
+      [
+        "ls-files",
+        "--cached",
+        "--others",
+        "--exclude-standard",
+        "-z",
+        "--",
+        "CLAUDE.md",
+        ":(glob)**/CLAUDE.md",
+        "CLAUDE.local.md",
+        ":(glob)**/CLAUDE.local.md",
+        ".claude/rules/*.md",
+        ":(glob)**/.claude/rules/**/*.md",
+      ],
+      { cwd: projectRoot, encoding: "utf8" },
+    );
+    relativePaths = [...new Set(stdout.split("\0").filter(Boolean))].sort();
+  } catch {
+    async function visit(directory: string): Promise<void> {
+      for (const entry of await readdir(directory, { withFileTypes: true })) {
+        if (entry.isDirectory()) {
+          if (entry.name !== ".git" && entry.name !== "node_modules") {
+            await visit(join(directory, entry.name));
+          }
+          continue;
+        }
+        const path = join(directory, entry.name);
+        const relativePath = relative(projectRoot, path).split(sep).join("/");
+        if (entry.isFile() && isClaudeInstruction(relativePath)) relativePaths.push(relativePath);
+      }
+    }
+    await visit(projectRoot);
+    relativePaths.sort();
+  }
+
+  const files: InstructionFile[] = [];
+  for (const relativePath of relativePaths) {
+    const path = join(projectRoot, relativePath);
+    const displayPath = `./${relativePath}`;
+    if (/(^|\/)\.claude\/rules\/.*\.md$/.test(relativePath)) {
+      const data = await readFile(path);
+      const { content } = parseRule(data.toString("utf8"), path);
+      if (!content.trim()) continue;
+      files.push({
+        path,
+        displayPath,
+        bytes: data.length,
+        effectiveBytes: Buffer.byteLength(content),
+        content,
+        kind: "project",
+        precedence: 0,
+        truncated: false,
+      });
+      continue;
+    }
+    const file = await load(path, displayPath, "project");
+    if (file) files.push(file);
+  }
+  return expandInstructionFiles(files, projectRoot, userHome);
 }

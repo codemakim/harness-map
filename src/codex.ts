@@ -14,6 +14,7 @@ export interface ImportedInstruction {
   displayPath: string;
   bytes: number;
   depth: number;
+  content?: string;
 }
 
 export interface InstructionFile {
@@ -26,6 +27,7 @@ export interface InstructionFile {
   precedence: number;
   truncated: boolean;
   imports?: ImportedInstruction[];
+  sourceContent?: string;
 }
 
 export interface CodexMap {

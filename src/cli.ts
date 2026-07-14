@@ -3,7 +3,11 @@ import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
-import { discoverClaude } from "./claude.js";
+import {
+  claudeInspectionFiles,
+  discoverClaude,
+  discoverClaudeInstructionFiles,
+} from "./claude.js";
 import { loadCodexConfig } from "./codex-config.js";
 import {
   discoverCodex,
@@ -36,9 +40,9 @@ export interface CliEnv {
 
 const help = `Usage:
   harness-map explain <file> [--agent codex|claude] [--cwd <dir>] [--json]
-  harness-map tree [--json]
-  harness-map budget [--json]
-  harness-map doctor [--json]
+  harness-map tree [--agent codex|claude] [--json]
+  harness-map budget [--agent codex|claude] [--json]
+  harness-map doctor [--agent codex|claude] [--json]
 `;
 
 export async function run(
@@ -96,39 +100,53 @@ export async function run(
     }
 
     if (["tree", "budget", "doctor"].includes(command)) {
-      const config = await loadCodexConfig({ userHome: env.home, codexHome: env.codexHome });
       const { values, positionals } = parseArgs({
         args: tokens,
         allowPositionals: true,
-        options: { json: { type: "boolean", default: false } },
+        options: {
+          agent: { type: "string", default: "codex" },
+          json: { type: "boolean", default: false },
+        },
       });
       if (positionals.length) throw new Error(`${command} does not accept positional arguments`);
+      if (values.agent !== "codex" && values.agent !== "claude") {
+        throw new Error(`Unsupported agent: ${values.agent}`);
+      }
 
-      const root = await findProjectRoot(env.processCwd, config.rootMarkers);
-      const files = await discoverInstructionFiles(root, config.fallbackFilenames);
+      const config = values.agent === "codex"
+        ? await loadCodexConfig({ userHome: env.home, codexHome: env.codexHome })
+        : undefined;
+      const root = await findProjectRoot(env.processCwd, config?.rootMarkers);
+      const files = values.agent === "claude"
+        ? await discoverClaudeInstructionFiles(root, env.home)
+        : await discoverInstructionFiles(root, config?.fallbackFilenames);
+      const budgetBytes = config?.maxBytes ?? null;
       let terminal: string;
       let json: object;
 
       if (command === "tree") {
         terminal = renderTree(files);
-        json = toTreeJson(files);
+        json = toTreeJson(files, values.agent);
       } else if (command === "budget") {
-        terminal = renderBudget(files, config.maxBytes);
-        json = toBudgetJson(files, config.maxBytes);
+        terminal = renderBudget(files, budgetBytes);
+        json = toBudgetJson(files, budgetBytes, values.agent);
       } else {
-        const inspection = await inspectInstructions(files, root);
+        const inspection = await inspectInstructions(
+          values.agent === "claude" ? claudeInspectionFiles(files, root) : files,
+          root,
+        );
         const warnings: Warning[] = [
           ...inspection.warnings,
-          ...files
-            .filter((file) => file.bytes > config.maxBytes)
+          ...(budgetBytes === null ? [] : files
+            .filter((file) => file.bytes > budgetBytes)
             .map((file) => ({
               kind: "instruction-over-budget" as const,
-              message: `${file.displayPath} exceeds the ${formatSize(config.maxBytes)} instruction budget`,
+              message: `${file.displayPath} exceeds the ${formatSize(budgetBytes)} instruction budget`,
               source: file.displayPath,
-            })),
+            }))),
         ];
         terminal = renderDoctor(warnings);
-        json = toDoctorJson(warnings);
+        json = toDoctorJson(warnings, values.agent);
       }
 
       io.stdout(values.json ? `${JSON.stringify(json, null, 2)}\n` : terminal);
