@@ -32,6 +32,13 @@ export function renderExplain(map: CodexMap | ClaudeMap, inspection: Inspection)
       ? `${formatSize(file.effectiveBytes)} of ${formatSize(file.bytes)} (truncated)`
       : formatSize(file.effectiveBytes);
     lines.push(`${file.precedence}. ${file.displayPath}`, `   - ${size}`, "");
+    if (file.imports?.length) {
+      lines.splice(
+        -1,
+        0,
+        ...file.imports.map((item) => `   - imports ${item.displayPath} (${formatSize(item.bytes)})`),
+      );
+    }
   }
 
   if (map.agent === "claude" && !map.instructions.length) {

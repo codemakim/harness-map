@@ -9,6 +9,13 @@ const execFile = promisify(execFileCallback);
 
 export const DEFAULT_BUDGET_BYTES = 32 * 1024;
 
+export interface ImportedInstruction {
+  path: string;
+  displayPath: string;
+  bytes: number;
+  depth: number;
+}
+
 export interface InstructionFile {
   path: string;
   displayPath: string;
@@ -18,6 +25,7 @@ export interface InstructionFile {
   kind: "global" | "project";
   precedence: number;
   truncated: boolean;
+  imports?: ImportedInstruction[];
 }
 
 export interface CodexMap {

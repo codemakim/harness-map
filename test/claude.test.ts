@@ -94,3 +94,61 @@ test("loads unconditional and path-matched Claude rules", async (t) => {
     "./.claude/rules/game/typescript.md",
   ]);
 });
+
+test("expands recursive imports but ignores Markdown code", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-claude-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const project = join(root, "project");
+  await mkdir(join(project, ".git"), { recursive: true });
+  await writeFile(
+    join(project, "CLAUDE.md"),
+    "Before\n@rules.md,\n\\`@escaped.md\\`\n@./규칙+엄격.md!\n`@inline.md`\n`multi\n@inline.md\nline`\n```md\n```not-a-close\n@fenced.md\n```\nAfter",
+  );
+  await writeFile(join(project, "rules.md"), "Rule one\n@nested.md");
+  await writeFile(join(project, "nested.md"), "Nested rule");
+  await writeFile(join(project, "escaped.md"), "escaped import");
+  await writeFile(join(project, "규칙+엄격.md"), "strict import");
+  await writeFile(join(project, "inline.md"), "inline must not load");
+  await writeFile(join(project, "fenced.md"), "fenced must not load");
+
+  const result = await discoverClaude({
+    cwd: project,
+    target: join(project, "game.ts"),
+    userHome: join(root, "home"),
+  });
+  const [file] = result.instructions;
+
+  assert.equal(
+    file.content,
+    "Before\nRule one\nNested rule,\n\\`escaped import\\`\nstrict import!\n`@inline.md`\n`multi\n@inline.md\nline`\n```md\n```not-a-close\n@fenced.md\n```\nAfter",
+  );
+  assert.deepEqual(file.imports?.map((item) => item.displayPath), [
+    "./rules.md",
+    "./nested.md",
+    "./escaped.md",
+    "./규칙+엄격.md",
+  ]);
+  assert.equal(file.effectiveBytes, Buffer.byteLength(file.content));
+});
+
+test("limits Claude imports to four hops", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-claude-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, ".git"));
+  await writeFile(join(root, "CLAUDE.md"), "@one.md");
+  await writeFile(join(root, "one.md"), "@two.md");
+  await writeFile(join(root, "two.md"), "@three.md");
+  await writeFile(join(root, "three.md"), "@four.md");
+  await writeFile(join(root, "four.md"), "@five.md");
+  await writeFile(join(root, "five.md"), "too deep");
+
+  const result = await discoverClaude({
+    cwd: root,
+    target: join(root, "game.ts"),
+    userHome: join(root, "home"),
+  });
+  const [file] = result.instructions;
+
+  assert.equal(file.content, "@five.md");
+  assert.deepEqual(file.imports?.map((item) => item.depth), [1, 2, 3, 4]);
+});
