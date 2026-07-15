@@ -1,6 +1,6 @@
 {
   "name": "harness-map",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Show what instructions an agent actually reads for a file.",
   "type": "module",
   "bin": {
@@ -35,6 +35,7 @@
   "homepage": "https://github.com/codemakim/harness-map#readme",
   "keywords": [
     "agents",
+    "claude-code",
     "codex",
     "cli",
     "developer-tools"

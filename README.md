@@ -61,6 +61,7 @@ Requires Node.js 20 or newer.
 
 ```sh
 npx harness-map explain apps/web/src/pages/Home.tsx
+npx harness-map explain apps/web/src/pages/Home.tsx --agent claude
 ```
 
 The CLI reads local files only. It makes no AI or network calls.
@@ -68,23 +69,31 @@ The CLI reads local files only. It makes no AI or network calls.
 ## Usage
 
 ```sh
-npx harness-map tree
-npx harness-map explain apps/web/src/pages/Home.tsx
-npx harness-map budget
-npx harness-map doctor
+npx harness-map tree [--agent codex|claude]
+npx harness-map explain apps/web/src/pages/Home.tsx [--agent codex|claude]
+npx harness-map budget [--agent codex|claude]
+npx harness-map doctor [--agent codex|claude]
 ```
 
 Add `--json` to any command for machine-readable output. `explain` also accepts
-`--cwd <dir>` and `--agent codex`.
+`--cwd <dir>`. The default agent is `codex`.
+
+The Claude adapter discovers user and project `CLAUDE.md` files,
+`CLAUDE.local.md`, and recursive `.claude/rules/**/*.md` rules. It applies
+`paths` frontmatter to the target file and expands `@file` imports up to four
+hops. Claude instruction files have no hard size budget, so `budget` reports
+their discovered size without enforcing a limit.
 
 `harness-map` reads `CODEX_HOME`, then `config.toml` from the active Codex home.
 It applies `project_doc_fallback_filenames`, `project_doc_max_bytes`, and
 `project_root_markers`. An explicitly empty `project_root_markers` list limits
 project discovery to the effective working directory.
 
-## v0.2 Scope
+## v0.3 Scope
 
-Current adapter: Codex only.
+Current adapters: Codex and Claude Code.
+
+Codex:
 
 - Discover `AGENTS.md`
 - Prefer `AGENTS.override.md` over `AGENTS.md` in the same scope
@@ -94,6 +103,18 @@ Current adapter: Codex only.
 - Respect the default 32 KiB instruction budget
 - Read Codex discovery settings from `config.toml`
 - Report truncated and budget-skipped project instructions
+
+Claude Code:
+
+- Discover user, project, and nested `CLAUDE.md` files
+- Discover `CLAUDE.local.md` files
+- Load recursive user and project `.claude/rules/**/*.md` rules
+- Apply rule `paths` frontmatter to the target path
+- Expand relative, absolute, and home-relative `@file` imports up to four hops
+- Report discovered size without inventing a hard budget
+
+Both adapters:
+
 - Warn on referenced files that do not exist
 - Warn on documented `npm` / `pnpm` scripts that are missing from `package.json`
 - Support terminal and JSON output
@@ -103,10 +124,10 @@ Current adapter: Codex only.
 ## Commands
 
 ```sh
-harness-map tree
-harness-map explain <file>
-harness-map budget
-harness-map doctor
+harness-map tree [--agent codex|claude]
+harness-map explain <file> [--agent codex|claude]
+harness-map budget [--agent codex|claude]
+harness-map doctor [--agent codex|claude]
 ```
 
 Future:
@@ -160,5 +181,5 @@ npm clean-install
 npm run check
 ```
 
-The package has one runtime dependency: `smol-toml` for correct Codex config
-parsing.
+Runtime dependencies are `smol-toml` for Codex config parsing, `yaml` for
+Claude rule frontmatter, and `minimatch` for Claude path rules.
