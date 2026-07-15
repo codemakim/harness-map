@@ -20,6 +20,7 @@ test("prints help", async () => {
 
   assert.equal(code, 0);
   assert.match(stdout.join(""), /harness-map explain <file>/);
+  assert.match(stdout.join(""), /harness-map scan/);
   assert.deepEqual(stderr, []);
 });
 
@@ -256,4 +257,42 @@ test("Claude doctor resolves imported content from its source directory", async 
   assert.equal(code, 0);
   assert.equal(value.warnings.length, 1);
   assert.equal(value.warnings[0].source, "docs/rules.md");
+});
+
+test("scan groups project files by effective Claude context", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-claude-scan-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, ".git"));
+  await mkdir(join(root, ".claude/rules"), { recursive: true });
+  await mkdir(join(root, "src"));
+  await mkdir(join(root, "docs"));
+  await writeFile(join(root, "CLAUDE.md"), "project");
+  await writeFile(
+    join(root, ".claude/rules/source.md"),
+    "---\npaths:\n  - src/**\n---\nsource rule",
+  );
+  await writeFile(join(root, "src/game.ts"), "export {};");
+  await writeFile(join(root, "docs/readme.md"), "# Docs");
+  const stdout: string[] = [];
+
+  const code = await run(
+    ["scan", "--agent", "claude", "--json"],
+    { stdout: (value) => stdout.push(value), stderr: () => undefined },
+    { processCwd: root, home: join(root, "home") },
+  );
+  const value = JSON.parse(stdout.join(""));
+
+  assert.equal(code, 0);
+  assert.equal(value.command, "scan");
+  assert.equal(value.agent, "claude");
+  assert.equal(value.fileCount, 2);
+  assert.equal(value.contexts.length, 2);
+  assert.deepEqual(value.contexts.map((context: { files: string[] }) => context.files), [
+    ["docs/readme.md"],
+    ["src/game.ts"],
+  ]);
+  assert.deepEqual(
+    value.contexts[1].instructions.map((file: { displayPath: string }) => file.displayPath),
+    ["./CLAUDE.md", "./.claude/rules/source.md"],
+  );
 });

@@ -20,12 +20,14 @@ import {
   renderBudget,
   renderDoctor,
   renderExplain,
+  renderScan,
   renderTree,
   toBudgetJson,
   toDoctorJson,
   toExplainJson,
   toTreeJson,
 } from "./output.js";
+import { groupScanMaps, scanTargets } from "./scan.js";
 
 export interface CliIo {
   stdout(value: string): void;
@@ -43,6 +45,7 @@ const help = `Usage:
   harness-map tree [--agent codex|claude] [--json]
   harness-map budget [--agent codex|claude] [--json]
   harness-map doctor [--agent codex|claude] [--json]
+  harness-map scan [--agent codex|claude] [--json]
 `;
 
 export async function run(
@@ -99,7 +102,7 @@ export async function run(
       return 0;
     }
 
-    if (["tree", "budget", "doctor"].includes(command)) {
+    if (["tree", "budget", "doctor", "scan"].includes(command)) {
       const { values, positionals } = parseArgs({
         args: tokens,
         allowPositionals: true,
@@ -120,6 +123,20 @@ export async function run(
       const files = values.agent === "claude"
         ? await discoverClaudeInstructionFiles(root, env.home)
         : await discoverInstructionFiles(root, config?.fallbackFilenames);
+
+      if (command === "scan") {
+        const items = [];
+        for (const target of await scanTargets(root, files)) {
+          const map = values.agent === "claude"
+            ? await discoverClaude({ cwd: dirname(target.path), target: target.path, userHome: env.home })
+            : await discoverCodex({ cwd: dirname(target.path), target: target.path, config: config! });
+          items.push({ relativePath: target.relativePath, map });
+        }
+        const result = groupScanMaps(values.agent, root, items);
+        io.stdout(values.json ? `${JSON.stringify(result, null, 2)}\n` : renderScan(result));
+        return 0;
+      }
+
       const budgetBytes = config?.maxBytes ?? null;
       let terminal: string;
       let json: object;

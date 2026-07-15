@@ -73,6 +73,7 @@ npx harness-map tree [--agent codex|claude]
 npx harness-map explain apps/web/src/pages/Home.tsx [--agent codex|claude]
 npx harness-map budget [--agent codex|claude]
 npx harness-map doctor [--agent codex|claude]
+npx harness-map scan [--agent codex|claude]
 ```
 
 Add `--json` to any command for machine-readable output. `explain` also accepts
@@ -83,6 +84,10 @@ The Claude adapter discovers user and project `CLAUDE.md` files,
 `paths` frontmatter to the target file and expands `@file` imports up to four
 hops. Claude instruction files have no hard size budget, so `budget` reports
 their discovered size without enforcing a limit.
+
+`scan` checks Git-tracked and unignored project files, then groups files that
+receive the same effective instruction stack. Terminal output shows five file
+examples per context; JSON output includes every file.
 
 `harness-map` reads `CODEX_HOME`, then `config.toml` from the active Codex home.
 It applies `project_doc_fallback_filenames`, `project_doc_max_bytes`, and
@@ -128,6 +133,7 @@ harness-map tree [--agent codex|claude]
 harness-map explain <file> [--agent codex|claude]
 harness-map budget [--agent codex|claude]
 harness-map doctor [--agent codex|claude]
+harness-map scan [--agent codex|claude]
 ```
 
 Future:

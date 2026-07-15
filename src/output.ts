@@ -3,6 +3,7 @@ import { relative } from "node:path";
 import { DEFAULT_BUDGET_BYTES, type CodexMap, type InstructionFile } from "./codex.js";
 import type { ClaudeMap } from "./claude.js";
 import type { Inspection, Warning } from "./inspect.js";
+import type { ScanResult } from "./scan.js";
 
 export function formatSize(bytes: number): string {
   return `${(bytes / 1024).toFixed(1)} KiB`;
@@ -137,4 +138,22 @@ export function toDoctorJson(warnings: Warning[], agent = "codex"): object {
 export function renderDoctor(warnings: Warning[]): string {
   if (!warnings.length) return "No warnings.\n";
   return `${warnings.map((warning) => `- ${warning.message} (${warning.source})`).join("\n")}\n`;
+}
+
+export function renderScan(result: ScanResult): string {
+  const count = (value: number, noun: string): string => `${value} ${noun}${value === 1 ? "" : "s"}`;
+  const lines = [
+    `Scanned ${count(result.fileCount, "file")} across ${count(result.contexts.length, "effective context")}.`,
+  ];
+  result.contexts.forEach((context, index) => {
+    lines.push("", `${index + 1}. ${count(context.fileCount, "file")} - ${formatSize(context.effectiveBytes)}`);
+    lines.push(
+      context.instructions.length
+        ? `   Instructions: ${context.instructions.map((file) => file.displayPath).join(", ")}`
+        : "   Instructions: none",
+      ...context.files.slice(0, 5).map((file) => `   - ${file}`),
+    );
+    if (context.fileCount > 5) lines.push(`   - ... ${context.fileCount - 5} more`);
+  });
+  return `${lines.join("\n")}\n`;
 }
