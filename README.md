@@ -94,7 +94,7 @@ It applies `project_doc_fallback_filenames`, `project_doc_max_bytes`, and
 `project_root_markers`. An explicitly empty `project_root_markers` list limits
 project discovery to the effective working directory.
 
-## v0.3 Scope
+## v0.4 Scope
 
 Current adapters: Codex and Claude Code.
 
@@ -120,6 +120,7 @@ Claude Code:
 
 Both adapters:
 
+- Group project files by effective instruction context with `scan`
 - Warn on referenced files that do not exist
 - Warn on documented `npm` / `pnpm` scripts that are missing from `package.json`
 - Support terminal and JSON output
