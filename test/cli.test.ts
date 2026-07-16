@@ -308,8 +308,8 @@ test("compare groups files by Codex and Claude context pairs", async (t) => {
   await mkdir(join(userHome, ".codex"), { recursive: true });
   await writeFile(join(userHome, ".codex/AGENTS.md"), "global");
   await writeFile(join(root, "AGENTS.md"), "codex root");
-  await writeFile(join(root, "CLAUDE.md"), "claude root");
-  await writeFile(join(root, "nested/CLAUDE.md"), "claude nested");
+  await writeFile(join(root, "CLAUDE.md"), "@AGENTS.md");
+  await writeFile(join(root, "nested/AGENTS.md"), "codex nested");
   await writeFile(join(root, "src/game.ts"), "export {};");
   await writeFile(join(root, "nested/game.ts"), "export {};");
   const stdout: string[] = [];
@@ -330,13 +330,114 @@ test("compare groups files by Codex and Claude context pairs", async (t) => {
     ["nested/game.ts"],
     ["src/game.ts"],
   ]);
-  assert.deepEqual(
-    value.contexts[0].claude.instructions.map((file: { displayPath: string }) => file.displayPath),
-    ["./CLAUDE.md", "./nested/CLAUDE.md"],
-  );
+  assert.equal(value.contexts[0].state, "coverage-gap");
+  assert.equal(value.contexts[1].state, "shared");
   assert.deepEqual(
     value.contexts[0].codex.instructions.map((file: { displayPath: string }) => file.displayPath),
-    ["~/.codex/AGENTS.md", "./AGENTS.md"],
+    ["~/.codex/AGENTS.md", "./AGENTS.md", "./nested/AGENTS.md"],
   );
   assert.equal(value.contexts[0].codex.effectiveBytes > value.contexts[0].codex.projectEffectiveBytes, true);
+  assert.deepEqual(value.environment, {
+    codex: ["~/.codex/AGENTS.md"],
+    claude: [],
+  });
+  assert.deepEqual(value.coverageGaps, [{
+    agent: "claude",
+    affectedFiles: 1,
+    missingInstructions: ["./nested/AGENTS.md"],
+  }]);
+});
+
+test("compare recognizes mirrored nested instructions as shared", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-compare-shared-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, ".git"));
+  await mkdir(join(root, "content"));
+  await writeFile(join(root, "AGENTS.md"), "root");
+  await writeFile(join(root, "CLAUDE.md"), "@AGENTS.md");
+  await writeFile(join(root, "content/AGENTS.md"), "content");
+  await writeFile(join(root, "content/CLAUDE.md"), "@AGENTS.md");
+  await writeFile(join(root, "content/post.md"), "post");
+  const stdout: string[] = [];
+
+  const code = await run(
+    ["compare", "--json"],
+    { stdout: (value) => stdout.push(value), stderr: () => undefined },
+    { processCwd: root, home: join(root, "home") },
+  );
+  const value = JSON.parse(stdout.join(""));
+
+  assert.equal(code, 0);
+  assert.deepEqual(value.contexts.map((context: { state: string }) => context.state), ["shared"]);
+  assert.deepEqual(value.coverageGaps, []);
+});
+
+test("compare treats global-only instructions as an unconfigured project", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-compare-global-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const userHome = join(root, "home");
+  await mkdir(join(root, ".git"));
+  await mkdir(join(userHome, ".codex"), { recursive: true });
+  await writeFile(join(userHome, ".codex/AGENTS.md"), "global");
+  await writeFile(join(root, "game.ts"), "export {};");
+  const stdout: string[] = [];
+
+  const code = await run(
+    ["compare", "--json"],
+    { stdout: (value) => stdout.push(value), stderr: () => undefined },
+    { processCwd: root, home: userHome },
+  );
+  const value = JSON.parse(stdout.join(""));
+
+  assert.equal(code, 0);
+  assert.equal(value.contexts[0].state, "unconfigured");
+  assert.deepEqual(value.environment.codex, ["~/.codex/AGENTS.md"]);
+  assert.deepEqual(value.coverageGaps, []);
+});
+
+test("compare reports a project with no instructions as unconfigured", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-compare-empty-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, ".git"));
+  await writeFile(join(root, "game.ts"), "export {};");
+  const stdout: string[] = [];
+
+  const code = await run(
+    ["compare", "--json"],
+    { stdout: (value) => stdout.push(value), stderr: () => undefined },
+    { processCwd: root, home: join(root, "home") },
+  );
+  const value = JSON.parse(stdout.join(""));
+
+  assert.equal(code, 0);
+  assert.equal(value.contexts[0].state, "unconfigured");
+  assert.deepEqual(value.environment, { codex: [], claude: [] });
+  assert.deepEqual(value.coverageGaps, []);
+});
+
+test("compare aggregates path-scoped environment instructions", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-compare-environment-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const userHome = join(root, "home");
+  await mkdir(join(root, ".git"));
+  await mkdir(join(root, "docs"));
+  await mkdir(join(root, "src"));
+  await mkdir(join(userHome, ".claude/rules"), { recursive: true });
+  await writeFile(
+    join(userHome, ".claude/rules/source.md"),
+    "---\npaths:\n  - src/**\n---\nsource rule",
+  );
+  await writeFile(join(root, "docs/readme.md"), "docs");
+  await writeFile(join(root, "src/game.ts"), "export {};");
+  const stdout: string[] = [];
+
+  const code = await run(
+    ["compare", "--json"],
+    { stdout: (value) => stdout.push(value), stderr: () => undefined },
+    { processCwd: root, home: userHome },
+  );
+  const value = JSON.parse(stdout.join(""));
+
+  assert.equal(code, 0);
+  assert.deepEqual(value.environment.claude, ["~/.claude/rules/source.md"]);
 });

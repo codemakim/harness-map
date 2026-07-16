@@ -164,7 +164,27 @@ export function renderCompare(result: CompareResult): string {
   const lines = [
     `Compared ${count(result.fileCount, "file")} across ${count(result.contexts.length, "comparison context")}.`,
   ];
+  if (result.environment.codex.length || result.environment.claude.length) {
+    lines.push(
+      "",
+      "Environment:",
+      `- Codex: ${result.environment.codex.join(", ") || "none"}`,
+      `- Claude: ${result.environment.claude.join(", ") || "none"}`,
+    );
+  }
+  if (result.coverageGaps.length) {
+    lines.push("", "Coverage gaps:");
+    for (const gap of result.coverageGaps) {
+      const name = gap.agent === "claude" ? "Claude" : "Codex";
+      lines.push(
+        `- ${name} misses instructions for ${count(gap.affectedFiles, "file")}`,
+        ...gap.missingInstructions.map((path) => `  - ${path}`),
+      );
+    }
+  }
   result.contexts.forEach((context, index) => {
+    const codexProject = context.codex.instructions.filter((file) => file.kind === "project");
+    const claudeProject = context.claude.instructions.filter((file) => file.kind === "project");
     const codexBudget = context.codex.budgetBytes === null
       ? "no hard budget"
       : `${formatSize(context.codex.projectEffectiveBytes)} / ${formatSize(context.codex.budgetBytes)}`;
@@ -173,12 +193,12 @@ export function renderCompare(result: CompareResult): string {
       : `${formatSize(context.claude.effectiveBytes)} / ${formatSize(context.claude.budgetBytes)}`;
     lines.push(
       "",
-      `${index + 1}. ${count(context.fileCount, "file")}`,
+      `${index + 1}. ${count(context.fileCount, "file")} - ${context.state}`,
       `   Codex: ${codexBudget}`,
-      `   - ${context.codex.instructions.map((file) => file.displayPath).join(", ") || "no instructions"}`,
+      `   - ${codexProject.map((file) => file.displayPath).join(", ") || "no project instructions"}`,
       `   Claude: ${claudeBudget}`,
-      `   - ${context.claude.instructions.map((file) => file.displayPath).join(", ") || "no instructions"}`,
-      "   Drift:",
+      `   - ${claudeProject.map((file) => file.displayPath).join(", ") || "no project instructions"}`,
+      "   Findings:",
       ...(context.differences.length
         ? context.differences.map((value) => `   - ${value}`)
         : ["   - none"]),

@@ -37,15 +37,15 @@
 
 **Deliverable:** `compare` distinguishes environment context, shared imports, real project coverage gaps, and independent instruction sources.
 
-- [ ] Add failing fixtures for a Claude `@AGENTS.md` mirror, a missing nested Claude bridge, global-only Codex instructions, and no project instructions.
-- [ ] Add instruction `kind` and import provenance to compare snapshots without exposing instruction content.
-- [ ] Exclude global user files from project drift; show them under an informational environment section.
-- [ ] Classify imported `AGENTS.md` as a shared source instead of `Claude only` / `Codex only` drift.
-- [ ] Report affected file counts for nested coverage gaps.
-- [ ] Render explicit states: `shared`, `coverage-gap`, `independent`, and `unconfigured`.
-- [ ] Run `npm run check` and dogfood `life-agent`, `blog`, `tactical-auto-battler`, and `project-ricochet` read-only.
-- [ ] Accept only if `life-agent` reports 70 affected files and `blog` no longer reports mirrored files as drift.
-- [ ] Commit with `feat: report actionable coverage drift`.
+- [x] Add failing fixtures for a Claude `@AGENTS.md` mirror, a missing nested Claude bridge, global-only Codex instructions, and no project instructions.
+- [x] Add instruction `kind` and import provenance to compare snapshots without exposing instruction content.
+- [x] Exclude global user files from project drift; show them under an informational environment section.
+- [x] Classify imported `AGENTS.md` as a shared source instead of `Claude only` / `Codex only` drift.
+- [x] Report affected file counts for nested coverage gaps.
+- [x] Render explicit states: `shared`, `coverage-gap`, `independent`, and `unconfigured`.
+- [x] Run `npm run check` and dogfood `life-agent`, `blog`, `tactical-auto-battler`, and `project-ricochet` read-only.
+- [x] Accept only if `life-agent` reports 70 affected files and `blog` no longer reports mirrored files as drift.
+- [x] Commit with `feat: report actionable coverage drift`.
 
 ## Task 2: Add A CI-Ready `check` Command
 
