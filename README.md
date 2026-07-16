@@ -75,6 +75,7 @@ npx harness-map budget [--agent codex|claude]
 npx harness-map doctor [--agent codex|claude]
 npx harness-map scan [--agent codex|claude]
 npx harness-map compare [--agents codex,claude]
+npx harness-map check [--json]
 ```
 
 Add `--json` to any command for machine-readable output. `explain` also accepts
@@ -93,6 +94,10 @@ examples per context; JSON output includes every file.
 `compare` runs Codex and Claude against the same project files, then groups
 files by their paired contexts and reports structural drift in instruction
 files, visible size, and budget behavior.
+
+`check` reports only actionable coverage gaps and broken references. It exits
+with status `1` when errors exist and `0` for clean, warning-only, or
+unconfigured projects, making it suitable for CI.
 
 `harness-map` reads `CODEX_HOME`, then `config.toml` from the active Codex home.
 It applies `project_doc_fallback_filenames`, `project_doc_max_bytes`, and
@@ -127,6 +132,7 @@ Both adapters:
 
 - Group project files by effective instruction context with `scan`
 - Compare Codex and Claude contexts across the project with `compare`
+- Fail CI on actionable coverage gaps and broken references with `check`
 - Warn on referenced files that do not exist
 - Warn on documented `npm` / `pnpm` scripts that are missing from `package.json`
 - Support terminal and JSON output
@@ -142,6 +148,7 @@ harness-map budget [--agent codex|claude]
 harness-map doctor [--agent codex|claude]
 harness-map scan [--agent codex|claude]
 harness-map compare [--agents codex,claude]
+harness-map check [--json]
 ```
 
 ## Not AgentLint

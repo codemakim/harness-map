@@ -58,15 +58,15 @@
 
 **Deliverable:** `harness-map check` prints only actionable findings and provides stable CI exit behavior.
 
-- [ ] Write failing tests for clean, coverage-gap, missing-reference, and unconfigured repositories.
-- [ ] Define finding levels: `error`, `warning`, and `info`.
-- [ ] Emit `error` for agent coverage gaps and broken concrete references.
-- [ ] Emit `info` when neither agent has project instructions; do not fail solely for being unconfigured.
-- [ ] Return exit `1` when any error exists and exit `0` otherwise.
-- [ ] Add JSON fields `errors`, `warnings`, `info`, and `affectedFiles`.
-- [ ] Document `harness-map check [--json]` and exit codes.
-- [ ] Run `npm run check` and verify the shell exit code against temporary repositories.
-- [ ] Commit with `feat: add harness coverage check`.
+- [x] Write failing tests for clean, coverage-gap, missing-reference, and unconfigured repositories.
+- [x] Define finding levels: `error`, `warning`, and `info`.
+- [x] Emit `error` for agent coverage gaps and broken concrete references.
+- [x] Emit `info` when neither agent has project instructions; do not fail solely for being unconfigured.
+- [x] Return exit `1` when any error exists and exit `0` otherwise.
+- [x] Add JSON fields `errors`, `warnings`, `info`, and `affectedFiles`.
+- [x] Document `harness-map check [--json]` and exit codes.
+- [x] Run `npm run check` and verify the shell exit code against temporary repositories.
+- [x] Commit with `feat: add harness coverage check`.
 
 ## Task 3: Add Safe Bridge Planning With `sync --dry-run`
 

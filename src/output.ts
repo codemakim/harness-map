@@ -2,6 +2,7 @@ import { relative } from "node:path";
 
 import { DEFAULT_BUDGET_BYTES, type CodexMap, type InstructionFile } from "./codex.js";
 import type { ClaudeMap } from "./claude.js";
+import type { CheckFinding, CheckResult } from "./check.js";
 import type { CompareResult } from "./compare.js";
 import type { Inspection, Warning } from "./inspect.js";
 import type { ScanResult } from "./scan.js";
@@ -207,5 +208,31 @@ export function renderCompare(result: CompareResult): string {
     );
     if (context.fileCount > 5) lines.push(`   - ... ${context.fileCount - 5} more`);
   });
+  return `${lines.join("\n")}\n`;
+}
+
+export function renderCheck(result: CheckResult): string {
+  if (!result.errors.length && !result.warnings.length && !result.info.length) {
+    return "No actionable findings.\n";
+  }
+  const count = (value: number, noun: string): string => `${value} ${noun}${value === 1 ? "" : "s"}`;
+  const lines = [
+    `${count(result.errors.length, "error")}, ${count(result.warnings.length, "warning")}, ${result.info.length} info`,
+  ];
+  const add = (level: string, finding: CheckFinding): void => {
+    lines.push("", `${level} ${finding.message}`);
+    if (finding.affectedFiles) {
+      lines.push(
+        level === "INFO"
+          ? `- ${count(finding.affectedFiles, "file")} in project`
+          : `- ${count(finding.affectedFiles, "file")} affected`,
+      );
+    }
+    if (finding.source) lines.push(`- Source: ${finding.source}`);
+    if (finding.instructions) lines.push(...finding.instructions.map((path) => `- ${path}`));
+  };
+  result.errors.forEach((finding) => add("ERROR", finding));
+  result.warnings.forEach((finding) => add("WARN", finding));
+  result.info.forEach((finding) => add("INFO", finding));
   return `${lines.join("\n")}\n`;
 }

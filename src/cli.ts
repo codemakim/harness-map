@@ -8,7 +8,8 @@ import {
   discoverClaude,
   discoverClaudeInstructionFiles,
 } from "./claude.js";
-import { groupCompareMaps } from "./compare.js";
+import { buildCheckResult } from "./check.js";
+import { groupCompareMaps, type CompareResult } from "./compare.js";
 import { loadCodexConfig } from "./codex-config.js";
 import {
   discoverCodex,
@@ -19,6 +20,7 @@ import { inspectInstructions, type Warning } from "./inspect.js";
 import {
   formatSize,
   renderBudget,
+  renderCheck,
   renderCompare,
   renderDoctor,
   renderExplain,
@@ -49,7 +51,38 @@ const help = `Usage:
   harness-map doctor [--agent codex|claude] [--json]
   harness-map scan [--agent codex|claude] [--json]
   harness-map compare [--agents codex,claude] [--json]
+  harness-map check [--json]
 `;
+
+interface ComparisonRun {
+  result: CompareResult;
+  root: string;
+  codexFiles: Awaited<ReturnType<typeof discoverInstructionFiles>>;
+  claudeFiles: Awaited<ReturnType<typeof discoverClaudeInstructionFiles>>;
+}
+
+async function discoverComparison(env: CliEnv): Promise<ComparisonRun> {
+  const config = await loadCodexConfig({ userHome: env.home, codexHome: env.codexHome });
+  const codexRoot = await findProjectRoot(env.processCwd, config.rootMarkers);
+  const claudeRoot = await findProjectRoot(env.processCwd);
+  if (codexRoot !== claudeRoot) throw new Error("Codex and Claude project roots differ");
+  const codexFiles = await discoverInstructionFiles(codexRoot, config.fallbackFilenames);
+  const claudeFiles = await discoverClaudeInstructionFiles(claudeRoot, env.home);
+  const items = [];
+  for (const target of await scanTargets(codexRoot, [...codexFiles, ...claudeFiles])) {
+    const [codex, claude] = await Promise.all([
+      discoverCodex({ cwd: dirname(target.path), target: target.path, config }),
+      discoverClaude({ cwd: dirname(target.path), target: target.path, userHome: env.home }),
+    ]);
+    items.push({ relativePath: target.relativePath, codex, claude });
+  }
+  return {
+    result: groupCompareMaps(codexRoot, items),
+    root: codexRoot,
+    codexFiles,
+    claudeFiles,
+  };
+}
 
 export async function run(
   argv: string[],
@@ -120,23 +153,29 @@ export async function run(
         throw new Error("compare currently supports --agents codex,claude");
       }
 
-      const config = await loadCodexConfig({ userHome: env.home, codexHome: env.codexHome });
-      const codexRoot = await findProjectRoot(env.processCwd, config.rootMarkers);
-      const claudeRoot = await findProjectRoot(env.processCwd);
-      if (codexRoot !== claudeRoot) throw new Error("Codex and Claude project roots differ");
-      const codexFiles = await discoverInstructionFiles(codexRoot, config.fallbackFilenames);
-      const claudeFiles = await discoverClaudeInstructionFiles(claudeRoot, env.home);
-      const items = [];
-      for (const target of await scanTargets(codexRoot, [...codexFiles, ...claudeFiles])) {
-        const [codex, claude] = await Promise.all([
-          discoverCodex({ cwd: dirname(target.path), target: target.path, config }),
-          discoverClaude({ cwd: dirname(target.path), target: target.path, userHome: env.home }),
-        ]);
-        items.push({ relativePath: target.relativePath, codex, claude });
-      }
-      const result = groupCompareMaps(codexRoot, items);
+      const { result } = await discoverComparison(env);
       io.stdout(values.json ? `${JSON.stringify(result, null, 2)}\n` : renderCompare(result));
       return 0;
+    }
+
+    if (command === "check") {
+      const { values, positionals } = parseArgs({
+        args: tokens,
+        allowPositionals: true,
+        options: { json: { type: "boolean", default: false } },
+      });
+      if (positionals.length) throw new Error("check does not accept positional arguments");
+      const comparison = await discoverComparison(env);
+      const [codexInspection, claudeInspection] = await Promise.all([
+        inspectInstructions(comparison.codexFiles, comparison.root),
+        inspectInstructions(claudeInspectionFiles(comparison.claudeFiles, comparison.root), comparison.root),
+      ]);
+      const result = buildCheckResult(
+        comparison.result,
+        [...codexInspection.warnings, ...claudeInspection.warnings],
+      );
+      io.stdout(values.json ? `${JSON.stringify(result, null, 2)}\n` : renderCheck(result));
+      return result.errors.length ? 1 : 0;
     }
 
     if (["tree", "budget", "doctor", "scan"].includes(command)) {

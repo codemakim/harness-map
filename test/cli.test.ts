@@ -22,6 +22,7 @@ test("prints help", async () => {
   assert.match(stdout.join(""), /harness-map explain <file>/);
   assert.match(stdout.join(""), /harness-map scan/);
   assert.match(stdout.join(""), /harness-map compare/);
+  assert.match(stdout.join(""), /harness-map check/);
   assert.deepEqual(stderr, []);
 });
 
@@ -440,4 +441,96 @@ test("compare aggregates path-scoped environment instructions", async (t) => {
 
   assert.equal(code, 0);
   assert.deepEqual(value.environment.claude, ["~/.claude/rules/source.md"]);
+});
+
+test("check exits cleanly for shared project instructions", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-check-clean-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, ".git"));
+  await writeFile(join(root, "AGENTS.md"), "shared");
+  await writeFile(join(root, "CLAUDE.md"), "@AGENTS.md");
+  await writeFile(join(root, "game.ts"), "export {};");
+  const stdout: string[] = [];
+
+  const code = await run(
+    ["check", "--json"],
+    { stdout: (value) => stdout.push(value), stderr: () => undefined },
+    { processCwd: root, home: join(root, "home") },
+  );
+  const value = JSON.parse(stdout.join(""));
+
+  assert.equal(code, 0);
+  assert.equal(value.command, "check");
+  assert.equal(value.affectedFiles, 0);
+  assert.deepEqual(value.errors, []);
+  assert.deepEqual(value.warnings, []);
+  assert.deepEqual(value.info, []);
+});
+
+test("check fails when Claude misses nested project instructions", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-check-gap-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, ".git"));
+  await mkdir(join(root, "nested"));
+  await writeFile(join(root, "AGENTS.md"), "shared");
+  await writeFile(join(root, "CLAUDE.md"), "@AGENTS.md");
+  await writeFile(join(root, "nested/AGENTS.md"), "nested");
+  await writeFile(join(root, "nested/game.ts"), "export {};");
+  const stdout: string[] = [];
+
+  const code = await run(
+    ["check", "--json"],
+    { stdout: (value) => stdout.push(value), stderr: () => undefined },
+    { processCwd: root, home: join(root, "home") },
+  );
+  const value = JSON.parse(stdout.join(""));
+
+  assert.equal(code, 1);
+  assert.equal(value.affectedFiles, 1);
+  assert.equal(value.errors.length, 1);
+  assert.equal(value.errors[0].kind, "coverage-gap");
+  assert.equal(value.errors[0].affectedFiles, 1);
+  assert.deepEqual(value.errors[0].instructions, ["./nested/AGENTS.md"]);
+});
+
+test("check deduplicates missing references shared by both agents", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-check-reference-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, ".git"));
+  await writeFile(join(root, "AGENTS.md"), "Read docs/missing.md");
+  await writeFile(join(root, "CLAUDE.md"), "@AGENTS.md");
+  await writeFile(join(root, "game.ts"), "export {};");
+  const stdout: string[] = [];
+
+  const code = await run(
+    ["check", "--json"],
+    { stdout: (value) => stdout.push(value), stderr: () => undefined },
+    { processCwd: root, home: join(root, "home") },
+  );
+  const value = JSON.parse(stdout.join(""));
+
+  assert.equal(code, 1);
+  assert.equal(value.errors.length, 1);
+  assert.equal(value.errors[0].kind, "missing-reference");
+  assert.equal(value.errors[0].message, "docs/missing.md does not exist");
+});
+
+test("check reports an unconfigured project as non-failing info", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-check-empty-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, ".git"));
+  await writeFile(join(root, "game.ts"), "export {};");
+  const stdout: string[] = [];
+
+  const code = await run(
+    ["check", "--json"],
+    { stdout: (value) => stdout.push(value), stderr: () => undefined },
+    { processCwd: root, home: join(root, "home") },
+  );
+  const value = JSON.parse(stdout.join(""));
+
+  assert.equal(code, 0);
+  assert.deepEqual(value.errors, []);
+  assert.equal(value.info.length, 1);
+  assert.equal(value.info[0].kind, "unconfigured");
 });
