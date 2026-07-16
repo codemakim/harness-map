@@ -76,6 +76,7 @@ npx harness-map doctor [--agent codex|claude]
 npx harness-map scan [--agent codex|claude]
 npx harness-map compare [--agents codex,claude]
 npx harness-map check [--json]
+npx harness-map sync --from codex --to claude --dry-run [--json]
 ```
 
 Add `--json` to any command for machine-readable output. `explain` also accepts
@@ -98,6 +99,11 @@ files, visible size, and budget behavior.
 `check` reports only actionable coverage gaps and broken references. It exits
 with status `1` when errors exist and `0` for clean, warning-only, or
 unconfigured projects, making it suitable for CI.
+
+`sync --from codex --to claude --dry-run` previews minimal `CLAUDE.md` bridge
+files for uncovered `AGENTS.md` files. Each bridge contains only a local
+`@AGENTS.md` import. Dry-run never writes files; an existing target is reported
+as a conflict and exits with status `1`.
 
 `harness-map` reads `CODEX_HOME`, then `config.toml` from the active Codex home.
 It applies `project_doc_fallback_filenames`, `project_doc_max_bytes`, and
@@ -133,6 +139,7 @@ Both adapters:
 - Group project files by effective instruction context with `scan`
 - Compare Codex and Claude contexts across the project with `compare`
 - Fail CI on actionable coverage gaps and broken references with `check`
+- Preview missing Codex-to-Claude instruction bridges with `sync --dry-run`
 - Warn on referenced files that do not exist
 - Warn on documented `npm` / `pnpm` scripts that are missing from `package.json`
 - Support terminal and JSON output
@@ -149,6 +156,7 @@ harness-map doctor [--agent codex|claude]
 harness-map scan [--agent codex|claude]
 harness-map compare [--agents codex,claude]
 harness-map check [--json]
+harness-map sync --from codex --to claude --dry-run [--json]
 ```
 
 ## Not AgentLint

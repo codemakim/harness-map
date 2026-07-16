@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile as execFileCallback } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -23,6 +23,7 @@ test("prints help", async () => {
   assert.match(stdout.join(""), /harness-map scan/);
   assert.match(stdout.join(""), /harness-map compare/);
   assert.match(stdout.join(""), /harness-map check/);
+  assert.match(stdout.join(""), /harness-map sync/);
   assert.deepEqual(stderr, []);
 });
 
@@ -533,4 +534,128 @@ test("check reports an unconfigured project as non-failing info", async (t) => {
   assert.deepEqual(value.errors, []);
   assert.equal(value.info.length, 1);
   assert.equal(value.info[0].kind, "unconfigured");
+});
+
+test("sync dry-run proposes a minimal Claude bridge without writing it", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-sync-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, ".git"));
+  await mkdir(join(root, "nested"));
+  await writeFile(join(root, "AGENTS.md"), "root");
+  await writeFile(join(root, "CLAUDE.md"), "@AGENTS.md");
+  await writeFile(join(root, "nested/AGENTS.md"), "nested");
+  await writeFile(join(root, "nested/game.ts"), "export {};");
+  const stdout: string[] = [];
+
+  const code = await run(
+    ["sync", "--from", "codex", "--to", "claude", "--dry-run", "--json"],
+    { stdout: (value) => stdout.push(value), stderr: () => undefined },
+    { processCwd: root, home: join(root, "home") },
+  );
+  const value = JSON.parse(stdout.join(""));
+
+  assert.equal(code, 0);
+  assert.equal(value.command, "sync");
+  assert.equal(value.dryRun, true);
+  assert.deepEqual(value.proposals, [{
+    path: "./nested/CLAUDE.md",
+    source: "./nested/AGENTS.md",
+    content: "@AGENTS.md\n",
+    affectedFiles: 1,
+  }]);
+  assert.deepEqual(value.conflicts, []);
+  await assert.rejects(readFile(join(root, "nested/CLAUDE.md")), { code: "ENOENT" });
+
+  const terminal: string[] = [];
+  assert.equal(await run(
+    ["sync", "--from", "codex", "--to", "claude", "--dry-run"],
+    { stdout: (value) => terminal.push(value), stderr: () => undefined },
+    { processCwd: root, home: join(root, "home") },
+  ), 0);
+  assert.match(terminal.join(""), /CREATE \.\/nested\/CLAUDE\.md/);
+  assert.match(terminal.join(""), /Source: \.\/nested\/AGENTS\.md/);
+  assert.match(terminal.join(""), /1 file affected/);
+});
+
+test("sync dry-run skips Codex instructions already imported by Claude", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-sync-covered-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, ".git"));
+  await mkdir(join(root, ".claude/rules"), { recursive: true });
+  await mkdir(join(root, "nested"));
+  await writeFile(join(root, "AGENTS.md"), "root");
+  await writeFile(join(root, "CLAUDE.md"), "@AGENTS.md");
+  await writeFile(join(root, "nested/AGENTS.md"), "nested");
+  await writeFile(
+    join(root, ".claude/rules/nested.md"),
+    "---\npaths:\n  - nested/**\n---\n@../../nested/AGENTS.md",
+  );
+  await writeFile(join(root, "nested/game.ts"), "export {};");
+  const stdout: string[] = [];
+
+  const code = await run(
+    ["sync", "--from", "codex", "--to", "claude", "--dry-run", "--json"],
+    { stdout: (value) => stdout.push(value), stderr: () => undefined },
+    { processCwd: root, home: join(root, "home") },
+  );
+  const value = JSON.parse(stdout.join(""));
+
+  assert.equal(code, 0);
+  assert.deepEqual(value.proposals, []);
+  assert.deepEqual(value.conflicts, []);
+});
+
+test("sync dry-run refuses to replace an existing Claude entrypoint", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-sync-conflict-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, ".git"));
+  await mkdir(join(root, "nested"));
+  await writeFile(join(root, "AGENTS.md"), "root");
+  await writeFile(join(root, "CLAUDE.md"), "@AGENTS.md");
+  await writeFile(join(root, "nested/AGENTS.md"), "nested");
+  await writeFile(join(root, "nested/CLAUDE.md"), "independent Claude rules");
+  await writeFile(join(root, "nested/game.ts"), "export {};");
+  const stdout: string[] = [];
+
+  const code = await run(
+    ["sync", "--from", "codex", "--to", "claude", "--dry-run", "--json"],
+    { stdout: (value) => stdout.push(value), stderr: () => undefined },
+    { processCwd: root, home: join(root, "home") },
+  );
+  const value = JSON.parse(stdout.join(""));
+
+  assert.equal(code, 1);
+  assert.deepEqual(value.proposals, []);
+  assert.deepEqual(value.conflicts, [{
+    path: "./nested/CLAUDE.md",
+    source: "./nested/AGENTS.md",
+    affectedFiles: 1,
+    reason: "target already exists",
+  }]);
+  assert.equal(await readFile(join(root, "nested/CLAUDE.md"), "utf8"), "independent Claude rules");
+});
+
+test("sync dry-run refuses different Codex and Claude project roots", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-sync-roots-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const nested = join(root, "nested");
+  const codexHome = join(root, "codex-home");
+  await mkdir(join(root, ".git"));
+  await mkdir(nested);
+  await mkdir(codexHome);
+  await writeFile(join(nested, "package.json"), "{}");
+  await writeFile(join(nested, "game.ts"), "export {};");
+  await writeFile(join(codexHome, "config.toml"), 'project_root_markers = ["package.json"]');
+  const stdout: string[] = [];
+  const stderr: string[] = [];
+
+  const code = await run(
+    ["sync", "--from", "codex", "--to", "claude", "--dry-run"],
+    { stdout: (value) => stdout.push(value), stderr: (value) => stderr.push(value) },
+    { processCwd: nested, home: join(root, "home"), codexHome },
+  );
+
+  assert.equal(code, 1);
+  assert.deepEqual(stdout, []);
+  assert.match(stderr.join(""), /Codex and Claude project roots differ/);
 });

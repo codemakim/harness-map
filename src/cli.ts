@@ -25,6 +25,7 @@ import {
   renderDoctor,
   renderExplain,
   renderScan,
+  renderSync,
   renderTree,
   toBudgetJson,
   toDoctorJson,
@@ -32,6 +33,7 @@ import {
   toTreeJson,
 } from "./output.js";
 import { groupScanMaps, scanTargets } from "./scan.js";
+import { buildSyncPlan } from "./sync.js";
 
 export interface CliIo {
   stdout(value: string): void;
@@ -52,6 +54,7 @@ const help = `Usage:
   harness-map scan [--agent codex|claude] [--json]
   harness-map compare [--agents codex,claude] [--json]
   harness-map check [--json]
+  harness-map sync --from codex --to claude --dry-run [--json]
 `;
 
 interface ComparisonRun {
@@ -176,6 +179,26 @@ export async function run(
       );
       io.stdout(values.json ? `${JSON.stringify(result, null, 2)}\n` : renderCheck(result));
       return result.errors.length ? 1 : 0;
+    }
+
+    if (command === "sync") {
+      const { values, positionals } = parseArgs({
+        args: tokens,
+        allowPositionals: true,
+        options: {
+          from: { type: "string" },
+          to: { type: "string" },
+          "dry-run": { type: "boolean", default: false },
+          json: { type: "boolean", default: false },
+        },
+      });
+      if (positionals.length) throw new Error("sync does not accept positional arguments");
+      if (values.from !== "codex" || values.to !== "claude" || !values["dry-run"]) {
+        throw new Error("sync currently supports --from codex --to claude --dry-run");
+      }
+      const result = await buildSyncPlan((await discoverComparison(env)).result);
+      io.stdout(values.json ? `${JSON.stringify(result, null, 2)}\n` : renderSync(result));
+      return result.conflicts.length ? 1 : 0;
     }
 
     if (["tree", "budget", "doctor", "scan"].includes(command)) {

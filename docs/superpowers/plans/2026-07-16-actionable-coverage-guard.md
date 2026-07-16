@@ -79,14 +79,14 @@
 
 **Deliverable:** The CLI proposes minimal Claude bridge files for uncovered nested Codex instructions without changing disk state.
 
-- [ ] Write failing tests for nested `AGENTS.md`, an existing `CLAUDE.md`, imports, and conflicting target files.
-- [ ] Support only `sync --from codex --to claude --dry-run` in this task.
-- [ ] Propose `<directory>/CLAUDE.md` containing a minimal local `@AGENTS.md` import.
-- [ ] Skip directories already covered through an existing Claude entrypoint or rule.
-- [ ] Refuse ambiguous roots and report existing-file conflicts.
-- [ ] Include proposed path, source path, and affected file count in terminal and JSON output.
-- [ ] Dogfood against `life-agent` read-only and verify the proposal matches its real coverage gaps.
-- [ ] Commit with `feat: plan Claude instruction bridges`.
+- [x] Write failing tests for nested `AGENTS.md`, an existing `CLAUDE.md`, imports, and conflicting target files.
+- [x] Support only `sync --from codex --to claude --dry-run` in this task.
+- [x] Propose `<directory>/CLAUDE.md` containing a minimal local `@AGENTS.md` import.
+- [x] Skip directories already covered through an existing Claude entrypoint or rule.
+- [x] Refuse ambiguous roots and report existing-file conflicts.
+- [x] Include proposed path, source path, and affected file count in terminal and JSON output.
+- [x] Dogfood against `life-agent` read-only and verify the proposal matches its real coverage gaps.
+- [x] Commit with `feat: plan Claude instruction bridges`.
 
 ## Task 4: Add Explicit `sync --write`
 

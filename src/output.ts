@@ -6,6 +6,7 @@ import type { CheckFinding, CheckResult } from "./check.js";
 import type { CompareResult } from "./compare.js";
 import type { Inspection, Warning } from "./inspect.js";
 import type { ScanResult } from "./scan.js";
+import type { SyncResult } from "./sync.js";
 
 export function formatSize(bytes: number): string {
   return `${(bytes / 1024).toFixed(1)} KiB`;
@@ -234,5 +235,32 @@ export function renderCheck(result: CheckResult): string {
   result.errors.forEach((finding) => add("ERROR", finding));
   result.warnings.forEach((finding) => add("WARN", finding));
   result.info.forEach((finding) => add("INFO", finding));
+  return `${lines.join("\n")}\n`;
+}
+
+export function renderSync(result: SyncResult): string {
+  const count = (value: number, noun: string): string => `${value} ${noun}${value === 1 ? "" : "s"}`;
+  if (!result.proposals.length && !result.conflicts.length) return "No Claude bridges needed.\n";
+  const lines = [
+    `Dry run: ${count(result.proposals.length, "bridge")} proposed, ${count(result.conflicts.length, "conflict")}.`,
+  ];
+  for (const item of result.proposals) {
+    lines.push(
+      "",
+      `CREATE ${item.path}`,
+      `- Source: ${item.source}`,
+      `- ${count(item.affectedFiles, "file")} affected`,
+      `- Content: ${item.content.trim()}`,
+    );
+  }
+  for (const item of result.conflicts) {
+    lines.push(
+      "",
+      `CONFLICT ${item.path}`,
+      `- Source: ${item.source}`,
+      `- ${count(item.affectedFiles, "file")} affected`,
+      `- ${item.reason}`,
+    );
+  }
   return `${lines.join("\n")}\n`;
 }
