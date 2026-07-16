@@ -2,6 +2,7 @@ import { relative } from "node:path";
 
 import { DEFAULT_BUDGET_BYTES, type CodexMap, type InstructionFile } from "./codex.js";
 import type { ClaudeMap } from "./claude.js";
+import type { CompareResult } from "./compare.js";
 import type { Inspection, Warning } from "./inspect.js";
 import type { ScanResult } from "./scan.js";
 
@@ -151,6 +152,37 @@ export function renderScan(result: ScanResult): string {
       context.instructions.length
         ? `   Instructions: ${context.instructions.map((file) => file.displayPath).join(", ")}`
         : "   Instructions: none",
+      ...context.files.slice(0, 5).map((file) => `   - ${file}`),
+    );
+    if (context.fileCount > 5) lines.push(`   - ... ${context.fileCount - 5} more`);
+  });
+  return `${lines.join("\n")}\n`;
+}
+
+export function renderCompare(result: CompareResult): string {
+  const count = (value: number, noun: string): string => `${value} ${noun}${value === 1 ? "" : "s"}`;
+  const lines = [
+    `Compared ${count(result.fileCount, "file")} across ${count(result.contexts.length, "comparison context")}.`,
+  ];
+  result.contexts.forEach((context, index) => {
+    const codexBudget = context.codex.budgetBytes === null
+      ? "no hard budget"
+      : `${formatSize(context.codex.projectEffectiveBytes)} / ${formatSize(context.codex.budgetBytes)}`;
+    const claudeBudget = context.claude.budgetBytes === null
+      ? `${formatSize(context.claude.effectiveBytes)} / no hard budget`
+      : `${formatSize(context.claude.effectiveBytes)} / ${formatSize(context.claude.budgetBytes)}`;
+    lines.push(
+      "",
+      `${index + 1}. ${count(context.fileCount, "file")}`,
+      `   Codex: ${codexBudget}`,
+      `   - ${context.codex.instructions.map((file) => file.displayPath).join(", ") || "no instructions"}`,
+      `   Claude: ${claudeBudget}`,
+      `   - ${context.claude.instructions.map((file) => file.displayPath).join(", ") || "no instructions"}`,
+      "   Drift:",
+      ...(context.differences.length
+        ? context.differences.map((value) => `   - ${value}`)
+        : ["   - none"]),
+      "   Files:",
       ...context.files.slice(0, 5).map((file) => `   - ${file}`),
     );
     if (context.fileCount > 5) lines.push(`   - ... ${context.fileCount - 5} more`);

@@ -21,6 +21,7 @@ test("prints help", async () => {
   assert.equal(code, 0);
   assert.match(stdout.join(""), /harness-map explain <file>/);
   assert.match(stdout.join(""), /harness-map scan/);
+  assert.match(stdout.join(""), /harness-map compare/);
   assert.deepEqual(stderr, []);
 });
 
@@ -295,4 +296,47 @@ test("scan groups project files by effective Claude context", async (t) => {
     value.contexts[1].instructions.map((file: { displayPath: string }) => file.displayPath),
     ["./CLAUDE.md", "./.claude/rules/source.md"],
   );
+});
+
+test("compare groups files by Codex and Claude context pairs", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-compare-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const userHome = join(root, "home");
+  await mkdir(join(root, ".git"));
+  await mkdir(join(root, "src"));
+  await mkdir(join(root, "nested"));
+  await mkdir(join(userHome, ".codex"), { recursive: true });
+  await writeFile(join(userHome, ".codex/AGENTS.md"), "global");
+  await writeFile(join(root, "AGENTS.md"), "codex root");
+  await writeFile(join(root, "CLAUDE.md"), "claude root");
+  await writeFile(join(root, "nested/CLAUDE.md"), "claude nested");
+  await writeFile(join(root, "src/game.ts"), "export {};");
+  await writeFile(join(root, "nested/game.ts"), "export {};");
+  const stdout: string[] = [];
+
+  const code = await run(
+    ["compare", "--agents", "codex,claude", "--json"],
+    { stdout: (value) => stdout.push(value), stderr: () => undefined },
+    { processCwd: root, home: userHome },
+  );
+  const value = JSON.parse(stdout.join(""));
+
+  assert.equal(code, 0);
+  assert.equal(value.command, "compare");
+  assert.deepEqual(value.agents, ["codex", "claude"]);
+  assert.equal(value.fileCount, 2);
+  assert.equal(value.contexts.length, 2);
+  assert.deepEqual(value.contexts.map((context: { files: string[] }) => context.files), [
+    ["nested/game.ts"],
+    ["src/game.ts"],
+  ]);
+  assert.deepEqual(
+    value.contexts[0].claude.instructions.map((file: { displayPath: string }) => file.displayPath),
+    ["./CLAUDE.md", "./nested/CLAUDE.md"],
+  );
+  assert.deepEqual(
+    value.contexts[0].codex.instructions.map((file: { displayPath: string }) => file.displayPath),
+    ["~/.codex/AGENTS.md", "./AGENTS.md"],
+  );
+  assert.equal(value.contexts[0].codex.effectiveBytes > value.contexts[0].codex.projectEffectiveBytes, true);
 });

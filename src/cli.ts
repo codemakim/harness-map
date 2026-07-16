@@ -8,6 +8,7 @@ import {
   discoverClaude,
   discoverClaudeInstructionFiles,
 } from "./claude.js";
+import { groupCompareMaps } from "./compare.js";
 import { loadCodexConfig } from "./codex-config.js";
 import {
   discoverCodex,
@@ -18,6 +19,7 @@ import { inspectInstructions, type Warning } from "./inspect.js";
 import {
   formatSize,
   renderBudget,
+  renderCompare,
   renderDoctor,
   renderExplain,
   renderScan,
@@ -46,6 +48,7 @@ const help = `Usage:
   harness-map budget [--agent codex|claude] [--json]
   harness-map doctor [--agent codex|claude] [--json]
   harness-map scan [--agent codex|claude] [--json]
+  harness-map compare [--agents codex,claude] [--json]
 `;
 
 export async function run(
@@ -99,6 +102,40 @@ export async function run(
           ? `${JSON.stringify(toExplainJson(map, inspection), null, 2)}\n`
           : renderExplain(map, inspection),
       );
+      return 0;
+    }
+
+    if (command === "compare") {
+      const { values, positionals } = parseArgs({
+        args: tokens,
+        allowPositionals: true,
+        options: {
+          agents: { type: "string", default: "codex,claude" },
+          json: { type: "boolean", default: false },
+        },
+      });
+      if (positionals.length) throw new Error("compare does not accept positional arguments");
+      const agents = values.agents.split(",").map((agent) => agent.trim());
+      if (agents.length !== 2 || new Set(agents).size !== 2 || !agents.includes("codex") || !agents.includes("claude")) {
+        throw new Error("compare currently supports --agents codex,claude");
+      }
+
+      const config = await loadCodexConfig({ userHome: env.home, codexHome: env.codexHome });
+      const codexRoot = await findProjectRoot(env.processCwd, config.rootMarkers);
+      const claudeRoot = await findProjectRoot(env.processCwd);
+      if (codexRoot !== claudeRoot) throw new Error("Codex and Claude project roots differ");
+      const codexFiles = await discoverInstructionFiles(codexRoot, config.fallbackFilenames);
+      const claudeFiles = await discoverClaudeInstructionFiles(claudeRoot, env.home);
+      const items = [];
+      for (const target of await scanTargets(codexRoot, [...codexFiles, ...claudeFiles])) {
+        const [codex, claude] = await Promise.all([
+          discoverCodex({ cwd: dirname(target.path), target: target.path, config }),
+          discoverClaude({ cwd: dirname(target.path), target: target.path, userHome: env.home }),
+        ]);
+        items.push({ relativePath: target.relativePath, codex, claude });
+      }
+      const result = groupCompareMaps(codexRoot, items);
+      io.stdout(values.json ? `${JSON.stringify(result, null, 2)}\n` : renderCompare(result));
       return 0;
     }
 
