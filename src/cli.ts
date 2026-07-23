@@ -1,6 +1,7 @@
 #!/usr/bin/env node
+import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
 import {
@@ -18,6 +19,7 @@ import {
 } from "./codex.js";
 import { inspectInstructions, type Warning } from "./inspect.js";
 import {
+  renderDiff,
   formatSize,
   renderBudget,
   renderCheck,
@@ -32,6 +34,8 @@ import {
   toExplainJson,
   toTreeJson,
 } from "./output.js";
+import { buildDiffResult } from "./diff.js";
+import { findGitRoot, withGitSnapshot } from "./git-snapshot.js";
 import { groupScanMaps, scanTargets } from "./scan.js";
 import { buildSyncPlan, writeSyncPlan } from "./sync.js";
 
@@ -53,6 +57,7 @@ const help = `Usage:
   harness-map doctor [--agent codex|claude] [--json]
   harness-map scan [--agent codex|claude] [--json]
   harness-map compare [--agents codex,claude] [--json]
+  harness-map diff [<before> <after>] [--json]
   harness-map check [--json]
   harness-map sync --from codex --to claude [--dry-run|--write] [--json]
 `;
@@ -158,6 +163,37 @@ export async function run(
 
       const { result } = await discoverComparison(env);
       io.stdout(values.json ? `${JSON.stringify(result, null, 2)}\n` : renderCompare(result));
+      return 0;
+    }
+
+    if (command === "diff") {
+      const { values, positionals } = parseArgs({
+        args: tokens,
+        allowPositionals: true,
+        options: { json: { type: "boolean", default: false } },
+      });
+      if (positionals.length !== 0 && positionals.length !== 2) {
+        throw new Error("diff accepts either zero or two Git revisions");
+      }
+
+      const current = await discoverComparison(env);
+      const repositoryRoot = await findGitRoot(current.root);
+      const projectPath = relative(repositoryRoot, await realpath(current.root));
+      const atRevision = (revision: string): Promise<CompareResult> =>
+        withGitSnapshot(repositoryRoot, revision, async (snapshotRoot) => (
+          await discoverComparison({
+            ...env,
+            processCwd: join(snapshotRoot, projectPath),
+          })
+        ).result);
+
+      const beforeLabel = positionals[0] ?? "HEAD";
+      const afterLabel = positionals[1] ?? "WORKTREE";
+      const [before, after] = positionals.length
+        ? await Promise.all([atRevision(beforeLabel), atRevision(afterLabel)])
+        : [await atRevision("HEAD"), current.result];
+      const result = buildDiffResult(beforeLabel, afterLabel, before, after);
+      io.stdout(values.json ? `${JSON.stringify(result, null, 2)}\n` : renderDiff(result));
       return 0;
     }
 

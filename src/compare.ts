@@ -2,9 +2,9 @@ import { resolve } from "node:path";
 
 import type { ClaudeMap } from "./claude.js";
 import type { CodexMap } from "./codex.js";
-type CompareState = "shared" | "coverage-gap" | "independent" | "unconfigured";
+export type CompareState = "shared" | "coverage-gap" | "independent" | "unconfigured";
 
-interface CompareInstruction {
+export interface CompareInstruction {
   displayPath: string;
   effectiveBytes: number;
   truncated: boolean;
@@ -12,7 +12,7 @@ interface CompareInstruction {
   imports: Array<{ displayPath: string; depth: number }>;
 }
 
-interface AgentContext {
+export interface AgentContext {
   budgetBytes: number | null;
   effectiveBytes: number;
   projectEffectiveBytes: number;

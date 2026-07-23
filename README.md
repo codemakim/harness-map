@@ -75,6 +75,7 @@ npx harness-map budget [--agent codex|claude]
 npx harness-map doctor [--agent codex|claude]
 npx harness-map scan [--agent codex|claude]
 npx harness-map compare [--agents codex,claude]
+npx harness-map diff [<before> <after>] [--json]
 npx harness-map check [--json]
 npx harness-map sync --from codex --to claude [--dry-run|--write] [--json]
 ```
@@ -95,6 +96,12 @@ examples per context; JSON output includes every file.
 `compare` runs Codex and Claude against the same project files, then groups
 files by their paired contexts and reports structural drift in instruction
 files, visible size, and budget behavior.
+
+`diff` compares effective Codex and Claude context across Git history. With no
+revisions it compares `HEAD` with the current worktree; with two revisions it
+compares those snapshots. Output groups affected files by coverage state,
+instruction sources, effective size, truncation, and budget changes. Temporary
+checkouts stay local and the source repository is not modified.
 
 `check` reports only actionable coverage gaps and broken references. It exits
 with status `1` when errors exist and `0` for clean, warning-only, or
@@ -138,6 +145,7 @@ Both adapters:
 
 - Group project files by effective instruction context with `scan`
 - Compare Codex and Claude contexts across the project with `compare`
+- Diff effective context across Git revisions or against the worktree
 - Fail CI on actionable coverage gaps and broken references with `check`
 - Preview or write missing Codex-to-Claude instruction bridges with `sync`
 - Warn on referenced files that do not exist
@@ -155,6 +163,7 @@ harness-map budget [--agent codex|claude]
 harness-map doctor [--agent codex|claude]
 harness-map scan [--agent codex|claude]
 harness-map compare [--agents codex,claude]
+harness-map diff [<before> <after>] [--json]
 harness-map check [--json]
 harness-map sync --from codex --to claude [--dry-run|--write] [--json]
 ```

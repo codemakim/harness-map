@@ -4,6 +4,7 @@ import { DEFAULT_BUDGET_BYTES, type CodexMap, type InstructionFile } from "./cod
 import type { ClaudeMap } from "./claude.js";
 import type { CheckFinding, CheckResult } from "./check.js";
 import type { CompareResult } from "./compare.js";
+import type { DiffResult } from "./diff.js";
 import type { Inspection, Warning } from "./inspect.js";
 import type { ScanResult } from "./scan.js";
 import type { SyncResult } from "./sync.js";
@@ -208,6 +209,32 @@ export function renderCompare(result: CompareResult): string {
       ...context.files.slice(0, 5).map((file) => `   - ${file}`),
     );
     if (context.fileCount > 5) lines.push(`   - ... ${context.fileCount - 5} more`);
+  });
+  return `${lines.join("\n")}\n`;
+}
+
+export function renderDiff(result: DiffResult): string {
+  const count = (value: number, noun: string): string => `${value} ${noun}${value === 1 ? "" : "s"}`;
+  const lines = [
+    `Compared ${result.before} -> ${result.after}.`,
+    `${count(result.changedFiles, "file")} changed context; ${count(result.addedFiles.length, "file")} added; ${count(result.removedFiles.length, "file")} removed.`,
+  ];
+  if (!result.changes.length) return `${lines.join("\n")}\n`;
+
+  result.changes.forEach((change, index) => {
+    lines.push(
+      "",
+      `${index + 1}. ${count(change.fileCount, "file")} - ${change.before.state} -> ${change.after.state}`,
+      `   Codex: ${formatSize(change.before.codex.effectiveBytes)} -> ${formatSize(change.after.codex.effectiveBytes)}`,
+      ...change.added.codex.map((path) => `   + Codex: ${path}`),
+      ...change.removed.codex.map((path) => `   - Codex: ${path}`),
+      `   Claude: ${formatSize(change.before.claude.effectiveBytes)} -> ${formatSize(change.after.claude.effectiveBytes)}`,
+      ...change.added.claude.map((path) => `   + Claude: ${path}`),
+      ...change.removed.claude.map((path) => `   - Claude: ${path}`),
+      "   Files:",
+      ...change.files.slice(0, 5).map((file) => `   - ${file}`),
+    );
+    if (change.fileCount > 5) lines.push(`   - ... ${change.fileCount - 5} more`);
   });
   return `${lines.join("\n")}\n`;
 }

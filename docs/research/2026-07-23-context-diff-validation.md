@@ -24,12 +24,30 @@ Test whether effective-context history adds enough value beyond `git diff`,
 
 ## Decision
 
-Do not implement `harness-map diff` now.
+Implement a bounded `harness-map diff` command as a product experiment.
 
-The validation found one strong explanatory example, but no case where the
-historical view supplied an action that the current `check` or `sync` result
-could not support. This misses the requirement for two or three
-decision-changing examples.
+The initial evidence does not prove that history is more actionable than
+`check` or `sync`. It does show that history explains blast radius and mixed
+coverage transitions much faster than reconstructing snapshots by hand.
+The implementation therefore stays narrow: deterministic context sources,
+coverage state, effective bytes, truncation, and budget state only. No semantic
+comparison, AI calls, or network calls.
+
+The command should earn further investment through real use. If it does not
+change review or debugging decisions, keep it small rather than building richer
+history analysis around it.
+
+## Implementation Check
+
+The bounded implementation reproduced `life-agent` commit `997a8a8ee9`:
+
+- 111 common files changed effective context;
+- 41 files moved from independent instructions to shared root instructions;
+- 70 files moved from independent instructions to a coverage gap;
+- 5 project files were added and 9 were removed.
+
+This matches the earlier hand-built reconstruction while exposing the mixed
+improvement and regression in one command.
 
 ## Next Candidate
 

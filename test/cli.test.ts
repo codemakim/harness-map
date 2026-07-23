@@ -22,6 +22,7 @@ test("prints help", async () => {
   assert.match(stdout.join(""), /harness-map explain <file>/);
   assert.match(stdout.join(""), /harness-map scan/);
   assert.match(stdout.join(""), /harness-map compare/);
+  assert.match(stdout.join(""), /harness-map diff/);
   assert.match(stdout.join(""), /harness-map check/);
   assert.match(stdout.join(""), /harness-map sync/);
   assert.deepEqual(stderr, []);
@@ -442,6 +443,121 @@ test("compare aggregates path-scoped environment instructions", async (t) => {
 
   assert.equal(code, 0);
   assert.deepEqual(value.environment.claude, ["~/.claude/rules/source.md"]);
+});
+
+test("diff compares effective context between two Git revisions", async (t) => {
+  const workspace = await mkdtemp(join(tmpdir(), "harness-map-diff-refs-"));
+  t.after(() => rm(workspace, { recursive: true, force: true }));
+  const root = join(workspace, "repo");
+  const home = join(workspace, "home");
+  await mkdir(root);
+  await execFile("git", ["init", "-q"], { cwd: root });
+  await execFile("git", ["config", "user.email", "test@example.com"], { cwd: root });
+  await execFile("git", ["config", "user.name", "Test"], { cwd: root });
+  await writeFile(join(root, "CLAUDE.md"), "Claude only");
+  await writeFile(join(root, "game.ts"), "export {};");
+  await execFile("git", ["add", "."], { cwd: root });
+  await execFile("git", ["commit", "-qm", "before"], { cwd: root });
+  const before = (await execFile("git", ["rev-parse", "HEAD"], { cwd: root })).stdout.trim();
+  await writeFile(join(root, "AGENTS.md"), "shared");
+  await writeFile(join(root, "CLAUDE.md"), "@AGENTS.md");
+  await execFile("git", ["add", "."], { cwd: root });
+  await execFile("git", ["commit", "-qm", "after"], { cwd: root });
+  const after = (await execFile("git", ["rev-parse", "HEAD"], { cwd: root })).stdout.trim();
+  const stdout: string[] = [];
+
+  const code = await run(
+    ["diff", before, after, "--json"],
+    { stdout: (value) => stdout.push(value), stderr: () => undefined },
+    { processCwd: root, home },
+  );
+  const value = JSON.parse(stdout.join(""));
+
+  assert.equal(code, 0);
+  assert.equal(value.command, "diff");
+  assert.equal(value.before, before);
+  assert.equal(value.after, after);
+  assert.equal(value.changedFiles, 1);
+  assert.deepEqual(value.addedFiles, []);
+  assert.deepEqual(value.removedFiles, []);
+  assert.equal(value.changes[0].before.state, "coverage-gap");
+  assert.equal(value.changes[0].after.state, "shared");
+  assert.deepEqual(value.changes[0].added.codex, ["./AGENTS.md"]);
+  assert.deepEqual(value.changes[0].added.claude, ["./AGENTS.md"]);
+  assert.deepEqual(value.changes[0].files, ["game.ts"]);
+
+  const terminal: string[] = [];
+  const terminalCode = await run(
+    ["diff", before, after],
+    { stdout: (value) => terminal.push(value), stderr: () => undefined },
+    { processCwd: root, home },
+  );
+  assert.equal(terminalCode, 0);
+  assert.match(terminal.join(""), /1 file - coverage-gap -> shared/);
+  assert.match(terminal.join(""), /\+ Codex: \.\/AGENTS\.md/);
+  assert.match(terminal.join(""), /\+ Claude: \.\/AGENTS\.md/);
+});
+
+test("diff defaults to HEAD versus the current worktree", async (t) => {
+  const workspace = await mkdtemp(join(tmpdir(), "harness-map-diff-worktree-"));
+  t.after(() => rm(workspace, { recursive: true, force: true }));
+  const root = join(workspace, "repo");
+  const home = join(workspace, "home");
+  await mkdir(join(root, "nested"), { recursive: true });
+  await execFile("git", ["init", "-q"], { cwd: root });
+  await execFile("git", ["config", "user.email", "test@example.com"], { cwd: root });
+  await execFile("git", ["config", "user.name", "Test"], { cwd: root });
+  await writeFile(join(root, "AGENTS.md"), "shared");
+  await writeFile(join(root, "CLAUDE.md"), "@AGENTS.md");
+  await writeFile(join(root, "nested/game.ts"), "export {};");
+  await execFile("git", ["add", "."], { cwd: root });
+  await execFile("git", ["commit", "-qm", "baseline"], { cwd: root });
+  await writeFile(join(root, "nested/AGENTS.md"), "nested");
+  const stdout: string[] = [];
+
+  const code = await run(
+    ["diff", "--json"],
+    { stdout: (value) => stdout.push(value), stderr: () => undefined },
+    { processCwd: root, home },
+  );
+  const value = JSON.parse(stdout.join(""));
+
+  assert.equal(code, 0);
+  assert.equal(value.before, "HEAD");
+  assert.equal(value.after, "WORKTREE");
+  assert.equal(value.changedFiles, 1);
+  assert.equal(value.changes[0].before.state, "shared");
+  assert.equal(value.changes[0].after.state, "coverage-gap");
+  assert.deepEqual(value.changes[0].added.codex, ["./nested/AGENTS.md"]);
+  assert.deepEqual(value.changes[0].files, ["nested/game.ts"]);
+});
+
+test("diff rejects a single Git revision", async () => {
+  const stderr: string[] = [];
+
+  const code = await run(
+    ["diff", "HEAD"],
+    { stdout: () => undefined, stderr: (value) => stderr.push(value) },
+  );
+
+  assert.equal(code, 1);
+  assert.match(stderr.join(""), /diff accepts either zero or two Git revisions/);
+});
+
+test("diff requires a Git repository", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-diff-no-git-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(join(root, "game.ts"), "export {};");
+  const stderr: string[] = [];
+
+  const code = await run(
+    ["diff"],
+    { stdout: () => undefined, stderr: (value) => stderr.push(value) },
+    { processCwd: root, home: join(root, "home") },
+  );
+
+  assert.equal(code, 1);
+  assert.match(stderr.join(""), /diff requires a Git repository/);
 });
 
 test("check exits cleanly for shared project instructions", async (t) => {
