@@ -69,7 +69,16 @@ Comparing the captured session against
 `src/__tests__/action-card-badges.spec.ts` produced one expected path, one
 observed path, and no drift.
 
-This validates session-start observation. Nested traversal, path-glob, include,
-and compaction events still need repeated real-session evidence before
+An isolated fixture then used a local `@src/game.ts` prompt reference while the
+API remained unreachable. Claude Code emitted all four expected paths before
+model execution:
+
+- root `CLAUDE.md` with `session_start`;
+- imported `shared.md` with `include` and its parent path;
+- nested `src/CLAUDE.md` with `nested_traversal` and its trigger path;
+- a `src/**/*.ts` rule with `path_glob_match`, its glob, and its trigger path.
+
+The comparison reported four matched paths and no drift. Compaction remains
+unverified, and repeated user-session evidence is still required before
 `observe` can become a CI gate. Keep it experimental and informational until
 then.

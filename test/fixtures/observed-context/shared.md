@@ -1,0 +1,1 @@
+Shared imported observation fixture.

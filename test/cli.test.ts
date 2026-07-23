@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile as execFileCallback } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -564,36 +564,57 @@ test("diff requires a Git repository", async (t) => {
 test("observe records sanitized hook input and compares the latest session", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "harness-map-observe-"));
   t.after(() => rm(root, { recursive: true, force: true }));
+  await cp(join(import.meta.dirname, "fixtures/observed-context"), root, { recursive: true });
   await mkdir(join(root, ".git"));
-  await mkdir(join(root, "src"));
-  await mkdir(join(root, "rules"));
-  await writeFile(join(root, "CLAUDE.md"), "@rules/shared.md");
-  await writeFile(join(root, "rules/shared.md"), "shared");
-  await writeFile(join(root, "src/game.ts"), "export {};");
   const log = join(root, ".harness-map/claude-observations.jsonl");
-  const hookInput = JSON.stringify({
-    session_id: "session-1",
-    transcript_path: "/private/transcript.jsonl",
-    cwd: root,
-    permission_mode: "default",
-    hook_event_name: "InstructionsLoaded",
-    file_path: join(root, "CLAUDE.md"),
-    memory_type: "Project",
-    load_reason: "session_start",
-  });
-
-  const recordCode = await run(
-    ["observe", "--record", log],
+  const events = [
     {
-      stdin: async () => hookInput,
-      stdout: () => undefined,
-      stderr: () => undefined,
+      file_path: join(root, "CLAUDE.md"),
+      memory_type: "Project",
+      load_reason: "session_start",
     },
-    { processCwd: root, home: join(root, "home") },
-  );
+    {
+      file_path: join(root, "shared.md"),
+      memory_type: "Project",
+      load_reason: "include",
+      parent_file_path: join(root, "CLAUDE.md"),
+    },
+    {
+      file_path: join(root, "src/CLAUDE.md"),
+      memory_type: "Project",
+      load_reason: "nested_traversal",
+      trigger_file_path: join(root, "src/game.ts"),
+    },
+    {
+      file_path: join(root, ".claude/rules/typescript.md"),
+      memory_type: "Project",
+      load_reason: "path_glob_match",
+      globs: ["src/**/*.ts"],
+      trigger_file_path: join(root, "src/game.ts"),
+    },
+  ];
+
+  for (const event of events) {
+    const recordCode = await run(
+      ["observe", "--record", log],
+      {
+        stdin: async () => JSON.stringify({
+          session_id: "session-1",
+          transcript_path: "/private/transcript.jsonl",
+          cwd: root,
+          permission_mode: "default",
+          hook_event_name: "InstructionsLoaded",
+          ...event,
+        }),
+        stdout: () => undefined,
+        stderr: () => undefined,
+      },
+      { processCwd: root, home: join(root, "home") },
+    );
+    assert.equal(recordCode, 0);
+  }
   const recorded = await readFile(log, "utf8");
 
-  assert.equal(recordCode, 0);
   assert.equal(recorded.includes("transcript"), false);
   assert.equal(recorded.includes("permission"), false);
 
@@ -608,8 +629,13 @@ test("observe records sanitized hook input and compares the latest session", asy
   assert.equal(compareCode, 0);
   assert.equal(value.command, "observe");
   assert.equal(value.target, "src/game.ts");
-  assert.deepEqual(value.matched, ["./CLAUDE.md"]);
-  assert.deepEqual(value.expectedOnly, ["./rules/shared.md"]);
+  assert.deepEqual(value.matched, [
+    "./CLAUDE.md",
+    "./shared.md",
+    "./.claude/rules/typescript.md",
+    "./src/CLAUDE.md",
+  ]);
+  assert.deepEqual(value.expectedOnly, []);
   assert.deepEqual(value.observedOnly, []);
 });
 
