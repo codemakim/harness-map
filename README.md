@@ -158,43 +158,53 @@ It applies `project_doc_fallback_filenames`, `project_doc_max_bytes`, and
 `project_root_markers`. An explicitly empty `project_root_markers` list limits
 project discovery to the effective working directory.
 
-## v0.5 Scope
+## v0.6 Support Matrix
 
 Current adapters: Codex and Claude Code.
 
-Codex:
+| Capability | Codex | Claude Code |
+| --- | --- | --- |
+| User-level instructions | `~/.codex/AGENTS.md` or `AGENTS.override.md` | `~/.claude/CLAUDE.md` and user rules |
+| Project instructions | `AGENTS.md` | `CLAUDE.md` and `.claude/CLAUDE.md` |
+| Nested instructions | Parent-to-target `AGENTS.md` hierarchy | Parent-to-target `CLAUDE.md` hierarchy |
+| Local precedence | `AGENTS.override.md` replaces `AGENTS.md` in the same directory | `CLAUDE.local.md` is loaded after shared instructions |
+| Path-scoped rules | Not supported by Codex | `.claude/rules/**/*.md` with `paths` frontmatter |
+| Imported instruction files | Not applicable | Relative, absolute, and home-relative `@file`, up to four hops |
+| Instruction size | Enforces configured project byte budget; default 32 KiB | Reports discovered bytes; no hard budget is invented |
+| Adapter configuration | Selected `config.toml` discovery and budget fields | Claude settings files are not interpreted |
+| Runtime observation | Not available | `InstructionsLoaded` hook paths through `observe` |
 
-- Discover `AGENTS.md`
-- Prefer `AGENTS.override.md` over `AGENTS.md` in the same scope
-- Merge one instruction file per directory from parent directory to target directory
-- Show actual application order
-- Calculate effective instruction size
-- Respect the default 32 KiB instruction budget
-- Read Codex discovery settings from `config.toml`
-- Report truncated and budget-skipped project instructions
+### Command Support
 
-Claude Code:
+| Command | Codex | Claude Code | Notes |
+| --- | --- | --- | --- |
+| `tree` | Yes | Yes | Inventory instruction sources |
+| `explain <file>` | Yes | Yes | Reconstruct one file's effective context |
+| `budget` | Yes | Yes | Claude reports size without a limit |
+| `doctor` | Yes | Yes | Broken references and package scripts |
+| `scan` | Yes | Yes | Group project files by effective context |
+| `compare` | Yes | Yes | Always compares the Codex/Claude pair |
+| `diff` | Yes | Yes | Compares paired effective context across Git snapshots |
+| `check` | Yes | Yes | Checks paired coverage gaps and broken references |
+| `sync` | Source | Target | Only `codex -> claude` bridge files are supported |
+| `observe` | No | Yes | Requires Claude Code's `InstructionsLoaded` hook |
 
-- Discover user, project, and nested `CLAUDE.md` files
-- Discover `CLAUDE.local.md` files
-- Load recursive user and project `.claude/rules/**/*.md` rules
-- Apply rule `paths` frontmatter to the target path
-- Expand relative, absolute, and home-relative `@file` imports up to four hops
-- Report discovered size without inventing a hard budget
+All supported commands have terminal and JSON output where documented.
+`harness-map` itself makes no AI or network calls.
 
-Both adapters:
+### Not Supported Yet
 
-- Group project files by effective instruction context with `scan`
-- Compare Codex and Claude contexts across the project with `compare`
-- Diff effective context across Git revisions or against the worktree
-- Compare expected Claude paths with observed `InstructionsLoaded` events
-- Fail CI on actionable coverage gaps and broken references with `check`
-- Preview or write missing Codex-to-Claude instruction bridges with `sync`
-- Warn on referenced files that do not exist
-- Warn on documented `npm` / `pnpm` scripts that are missing from `package.json`
-- Support terminal and JSON output
-- Make no AI calls
-- Make no network calls
+- Cursor, Copilot, Gemini CLI, or other agent adapters
+- Claude managed instructions, auto memory, skills, subagents, MCP configuration,
+  permissions, or general hook configuration
+- Codex skills, MCP configuration, permissions, or runtime-loaded context
+- Semantic equivalence, contradiction detection, instruction quality scoring,
+  or proof that a model followed an instruction
+- Claude-to-Codex sync or automatic rewriting of existing instruction files
+- Automatic installation or modification of Claude Code hook settings
+
+`observe` verifies loaded instruction paths, not instruction content or model
+adherence. It is informational and does not currently fail CI.
 
 ## Commands
 
@@ -237,7 +247,7 @@ packages/
   adapter-copilot/
 ```
 
-Later, `compare` can expose drift across agents:
+Future adapters can extend `compare` beyond the current Codex/Claude pair:
 
 ```text
 Codex reads:   4 instruction files, 12.4 KiB
