@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { realpath } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
@@ -26,6 +26,7 @@ import {
   renderCompare,
   renderDoctor,
   renderExplain,
+  renderObservedContext,
   renderScan,
   renderSync,
   renderTree,
@@ -36,10 +37,17 @@ import {
 } from "./output.js";
 import { buildDiffResult } from "./diff.js";
 import { findGitRoot, withGitSnapshot } from "./git-snapshot.js";
+import {
+  appendObservation,
+  buildObservedContext,
+  parseClaudeHookEvent,
+  parseObservationLog,
+} from "./observe.js";
 import { groupScanMaps, scanTargets } from "./scan.js";
 import { buildSyncPlan, writeSyncPlan } from "./sync.js";
 
 export interface CliIo {
+  stdin?(): Promise<string>;
   stdout(value: string): void;
   stderr(value: string): void;
 }
@@ -58,9 +66,18 @@ const help = `Usage:
   harness-map scan [--agent codex|claude] [--json]
   harness-map compare [--agents codex,claude] [--json]
   harness-map diff [<before> <after>] [--json]
+  harness-map observe --record <log>
+  harness-map observe <file> --from <log> [--json]
   harness-map check [--json]
   harness-map sync --from codex --to claude [--dry-run|--write] [--json]
 `;
+
+async function readStdin(): Promise<string> {
+  process.stdin.setEncoding("utf8");
+  let text = "";
+  for await (const chunk of process.stdin) text += chunk;
+  return text;
+}
 
 interface ComparisonRun {
   result: CompareResult;
@@ -194,6 +211,44 @@ export async function run(
         : [await atRevision("HEAD"), current.result];
       const result = buildDiffResult(beforeLabel, afterLabel, before, after);
       io.stdout(values.json ? `${JSON.stringify(result, null, 2)}\n` : renderDiff(result));
+      return 0;
+    }
+
+    if (command === "observe") {
+      const { values, positionals } = parseArgs({
+        args: tokens,
+        allowPositionals: true,
+        options: {
+          record: { type: "string" },
+          from: { type: "string" },
+          json: { type: "boolean", default: false },
+        },
+      });
+      if (values.record) {
+        if (positionals.length || values.from || values.json) {
+          throw new Error("observe --record accepts only an output log path");
+        }
+        const input = await (io.stdin?.() ?? readStdin());
+        await appendObservation(
+          resolve(env.processCwd, values.record),
+          parseClaudeHookEvent(JSON.parse(input)),
+        );
+        return 0;
+      }
+      if (positionals.length !== 1 || !values.from) {
+        throw new Error("observe requires one file and --from <log>");
+      }
+      const target = resolve(env.processCwd, positionals[0]);
+      const map = await discoverClaude({
+        cwd: dirname(target),
+        target,
+        userHome: env.home,
+      });
+      const observations = parseObservationLog(
+        await readFile(resolve(env.processCwd, values.from), "utf8"),
+      );
+      const result = buildObservedContext(map, observations);
+      io.stdout(values.json ? `${JSON.stringify(result, null, 2)}\n` : renderObservedContext(result));
       return 0;
     }
 

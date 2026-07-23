@@ -23,6 +23,7 @@ test("prints help", async () => {
   assert.match(stdout.join(""), /harness-map scan/);
   assert.match(stdout.join(""), /harness-map compare/);
   assert.match(stdout.join(""), /harness-map diff/);
+  assert.match(stdout.join(""), /harness-map observe/);
   assert.match(stdout.join(""), /harness-map check/);
   assert.match(stdout.join(""), /harness-map sync/);
   assert.deepEqual(stderr, []);
@@ -558,6 +559,58 @@ test("diff requires a Git repository", async (t) => {
 
   assert.equal(code, 1);
   assert.match(stderr.join(""), /diff requires a Git repository/);
+});
+
+test("observe records sanitized hook input and compares the latest session", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-observe-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, ".git"));
+  await mkdir(join(root, "src"));
+  await mkdir(join(root, "rules"));
+  await writeFile(join(root, "CLAUDE.md"), "@rules/shared.md");
+  await writeFile(join(root, "rules/shared.md"), "shared");
+  await writeFile(join(root, "src/game.ts"), "export {};");
+  const log = join(root, ".harness-map/claude-observations.jsonl");
+  const hookInput = JSON.stringify({
+    session_id: "session-1",
+    transcript_path: "/private/transcript.jsonl",
+    cwd: root,
+    permission_mode: "default",
+    hook_event_name: "InstructionsLoaded",
+    file_path: join(root, "CLAUDE.md"),
+    memory_type: "Project",
+    load_reason: "session_start",
+  });
+
+  const recordCode = await run(
+    ["observe", "--record", log],
+    {
+      stdin: async () => hookInput,
+      stdout: () => undefined,
+      stderr: () => undefined,
+    },
+    { processCwd: root, home: join(root, "home") },
+  );
+  const recorded = await readFile(log, "utf8");
+
+  assert.equal(recordCode, 0);
+  assert.equal(recorded.includes("transcript"), false);
+  assert.equal(recorded.includes("permission"), false);
+
+  const stdout: string[] = [];
+  const compareCode = await run(
+    ["observe", "src/game.ts", "--from", log, "--json"],
+    { stdout: (value) => stdout.push(value), stderr: () => undefined },
+    { processCwd: root, home: join(root, "home") },
+  );
+  const value = JSON.parse(stdout.join(""));
+
+  assert.equal(compareCode, 0);
+  assert.equal(value.command, "observe");
+  assert.equal(value.target, "src/game.ts");
+  assert.deepEqual(value.matched, ["./CLAUDE.md"]);
+  assert.deepEqual(value.expectedOnly, ["./rules/shared.md"]);
+  assert.deepEqual(value.observedOnly, []);
 });
 
 test("check exits cleanly for shared project instructions", async (t) => {

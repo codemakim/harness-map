@@ -6,6 +6,7 @@ import type { CheckFinding, CheckResult } from "./check.js";
 import type { CompareResult } from "./compare.js";
 import type { DiffResult } from "./diff.js";
 import type { Inspection, Warning } from "./inspect.js";
+import type { ObservedContextResult } from "./observe.js";
 import type { ScanResult } from "./scan.js";
 import type { SyncResult } from "./sync.js";
 
@@ -236,6 +237,22 @@ export function renderDiff(result: DiffResult): string {
     );
     if (change.fileCount > 5) lines.push(`   - ... ${change.fileCount - 5} more`);
   });
+  return `${lines.join("\n")}\n`;
+}
+
+export function renderObservedContext(result: ObservedContextResult): string {
+  const lines = [
+    `Observed Claude context for ${result.target}.`,
+    `Session: ${result.sessionId}`,
+    `Status: ${result.status}`,
+    `Matched: ${result.matched.length}; expected only: ${result.expectedOnly.length}; observed only: ${result.observedOnly.length}`,
+  ];
+  if (result.expectedOnly.length) {
+    lines.push("", "Expected but not observed:", ...result.expectedOnly.map((path) => `- ${path}`));
+  }
+  if (result.observedOnly.length) {
+    lines.push("", "Observed but not expected:", ...result.observedOnly.map((path) => `- ${path}`));
+  }
   return `${lines.join("\n")}\n`;
 }
 

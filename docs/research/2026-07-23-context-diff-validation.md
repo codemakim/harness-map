@@ -49,17 +49,27 @@ The bounded implementation reproduced `life-agent` commit `997a8a8ee9`:
 This matches the earlier hand-built reconstruction while exposing the mixed
 improvement and regression in one command.
 
-## Next Candidate
+## Observed Context Spike
 
-Run a bounded Claude Code observed-context spike using the
-`InstructionsLoaded` hook.
+Claude Code officially documents the `InstructionsLoaded` hook with absolute
+instruction paths, load reasons, matching globs, trigger paths, and parent
+include paths. The event is asynchronous and has no decision control.
 
-Proceed only if the spike can:
+The bounded spike adds:
 
-- capture root, nested, imported, and path-scoped instruction paths reliably;
-- compare observed paths with harness-map's expected paths;
-- store only local event metadata, never instruction or transcript content;
-- work without patching Claude Code or relying on undocumented internals.
+- `harness-map observe --record <log>` for sanitized JSONL capture;
+- `harness-map observe <file> --from <log>` for latest-session path comparison;
+- no instruction content, prompts, transcript paths, or permission data;
+- no AI or network calls from `harness-map`.
 
-If those checks fail, stop rather than expanding adapters or adding semantic
-analysis.
+An actual Claude Code 2.1.138 process loaded the root `CLAUDE.md` from
+`tactical-auto-battler` and invoked the recorder before model execution. External
+API access was redirected to an unreachable localhost address during the test.
+Comparing the captured session against
+`src/__tests__/action-card-badges.spec.ts` produced one expected path, one
+observed path, and no drift.
+
+This validates session-start observation. Nested traversal, path-glob, include,
+and compaction events still need repeated real-session evidence before
+`observe` can become a CI gate. Keep it experimental and informational until
+then.

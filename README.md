@@ -76,6 +76,7 @@ npx harness-map doctor [--agent codex|claude]
 npx harness-map scan [--agent codex|claude]
 npx harness-map compare [--agents codex,claude]
 npx harness-map diff [<before> <after>] [--json]
+npx harness-map observe <file> --from <log> [--json]
 npx harness-map check [--json]
 npx harness-map sync --from codex --to claude [--dry-run|--write] [--json]
 ```
@@ -102,6 +103,43 @@ revisions it compares `HEAD` with the current worktree; with two revisions it
 compares those snapshots. Output groups affected files by coverage state,
 instruction sources, effective size, truncation, and budget changes. Temporary
 checkouts stay local and the source repository is not modified.
+
+`observe` compares the Claude adapter's expected paths with paths emitted by
+Claude Code's `InstructionsLoaded` hook. Add a local hook after installing
+`harness-map` in the project:
+
+```json
+{
+  "hooks": {
+    "InstructionsLoaded": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx --no-install harness-map observe --record \"${CLAUDE_PROJECT_DIR}/.harness-map/claude-observations.jsonl\""
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Put this in `.claude/settings.local.json`, add `.harness-map/` to
+`.gitignore`, then start a new Claude Code session and let it access the target
+file. Compare the latest recorded session:
+
+```sh
+npx harness-map observe src/game.ts \
+  --from .harness-map/claude-observations.jsonl
+```
+
+The recorder stores only whitelisted instruction metadata: session ID, working
+directory, instruction path, scope, load reason, matching globs, and lazy-load
+relationships. It discards transcript paths, prompts, permission mode, and
+instruction content. `InstructionsLoaded` is asynchronous, so wait for hook
+completion before comparing. A matched result proves path discovery only, not
+that the model followed the instructions.
 
 `check` reports only actionable coverage gaps and broken references. It exits
 with status `1` when errors exist and `0` for clean, warning-only, or
@@ -146,6 +184,7 @@ Both adapters:
 - Group project files by effective instruction context with `scan`
 - Compare Codex and Claude contexts across the project with `compare`
 - Diff effective context across Git revisions or against the worktree
+- Compare expected Claude paths with observed `InstructionsLoaded` events
 - Fail CI on actionable coverage gaps and broken references with `check`
 - Preview or write missing Codex-to-Claude instruction bridges with `sync`
 - Warn on referenced files that do not exist
@@ -164,6 +203,8 @@ harness-map doctor [--agent codex|claude]
 harness-map scan [--agent codex|claude]
 harness-map compare [--agents codex,claude]
 harness-map diff [<before> <after>] [--json]
+harness-map observe --record <log>
+harness-map observe <file> --from <log> [--json]
 harness-map check [--json]
 harness-map sync --from codex --to claude [--dry-run|--write] [--json]
 ```
