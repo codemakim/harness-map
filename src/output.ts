@@ -241,8 +241,16 @@ export function renderCheck(result: CheckResult): string {
 export function renderSync(result: SyncResult): string {
   const count = (value: number, noun: string): string => `${value} ${noun}${value === 1 ? "" : "s"}`;
   if (!result.proposals.length && !result.conflicts.length) return "No Claude bridges needed.\n";
+  if (!result.dryRun && result.created.length) {
+    return `${[
+      `${count(result.created.length, "bridge")} created.`,
+      ...result.created.map((path) => `CREATED ${path}`),
+      "",
+      "Verify with: harness-map check",
+    ].join("\n")}\n`;
+  }
   const lines = [
-    `Dry run: ${count(result.proposals.length, "bridge")} proposed, ${count(result.conflicts.length, "conflict")}.`,
+    `${result.dryRun ? "Dry run" : "Write refused"}: ${count(result.proposals.length, "bridge")} proposed, ${count(result.conflicts.length, "conflict")}.`,
   ];
   for (const item of result.proposals) {
     lines.push(

@@ -98,13 +98,13 @@
 
 **Deliverable:** Users can apply the exact reviewed dry-run plan with conservative filesystem behavior.
 
-- [ ] Write failing tests proving no overwrite, no partial write after validation failure, and idempotent reruns.
-- [ ] Require the explicit `--write` flag; keep dry-run as the default behavior.
-- [ ] Validate every target before writing any file.
-- [ ] Create only missing bridge files and never edit existing `AGENTS.md` or `CLAUDE.md` files.
-- [ ] Print created paths and the command needed to verify with `harness-map check`.
-- [ ] Test only with temporary repositories; do not apply writes to user projects automatically.
-- [ ] Commit with `feat: write safe instruction bridges`.
+- [x] Write failing tests proving no overwrite, no partial write after validation failure, and idempotent reruns.
+- [x] Require the explicit `--write` flag; keep dry-run as the default behavior.
+- [x] Validate every target before writing any file.
+- [x] Create only missing bridge files and never edit existing `AGENTS.md` or `CLAUDE.md` files.
+- [x] Print created paths and the command needed to verify with `harness-map check`.
+- [x] Test only with temporary repositories; do not apply writes to user projects automatically.
+- [x] Commit with `feat: write safe instruction bridges`.
 
 ## Task 5: Validate Product Value And Release
 

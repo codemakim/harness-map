@@ -568,7 +568,7 @@ test("sync dry-run proposes a minimal Claude bridge without writing it", async (
 
   const terminal: string[] = [];
   assert.equal(await run(
-    ["sync", "--from", "codex", "--to", "claude", "--dry-run"],
+    ["sync", "--from", "codex", "--to", "claude"],
     { stdout: (value) => terminal.push(value), stderr: () => undefined },
     { processCwd: root, home: join(root, "home") },
   ), 0);
@@ -658,4 +658,86 @@ test("sync dry-run refuses different Codex and Claude project roots", async (t) 
   assert.equal(code, 1);
   assert.deepEqual(stdout, []);
   assert.match(stderr.join(""), /Codex and Claude project roots differ/);
+});
+
+test("sync --write creates the reviewed bridges and prints verification guidance", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-sync-write-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, ".git"));
+  await mkdir(join(root, "nested"));
+  await writeFile(join(root, "AGENTS.md"), "root");
+  await writeFile(join(root, "CLAUDE.md"), "@AGENTS.md");
+  await writeFile(join(root, "nested/AGENTS.md"), "nested");
+  await writeFile(join(root, "nested/game.ts"), "export {};");
+  const stdout: string[] = [];
+
+  const code = await run(
+    ["sync", "--from", "codex", "--to", "claude", "--write"],
+    { stdout: (value) => stdout.push(value), stderr: () => undefined },
+    { processCwd: root, home: join(root, "home") },
+  );
+
+  assert.equal(code, 0);
+  assert.equal(await readFile(join(root, "nested/CLAUDE.md"), "utf8"), "@AGENTS.md\n");
+  assert.match(stdout.join(""), /CREATED \.\/nested\/CLAUDE\.md/);
+  assert.match(stdout.join(""), /harness-map check/);
+});
+
+test("sync --write performs no writes when any target conflicts", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-sync-atomic-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, ".git"));
+  await mkdir(join(root, "one"));
+  await mkdir(join(root, "two"));
+  await writeFile(join(root, "AGENTS.md"), "root");
+  await writeFile(join(root, "CLAUDE.md"), "@AGENTS.md");
+  await writeFile(join(root, "one/AGENTS.md"), "one");
+  await writeFile(join(root, "one/game.ts"), "export {};");
+  await writeFile(join(root, "two/AGENTS.md"), "two");
+  await writeFile(join(root, "two/CLAUDE.md"), "keep me");
+  await writeFile(join(root, "two/game.ts"), "export {};");
+
+  const stdout: string[] = [];
+  const code = await run(
+    ["sync", "--from", "codex", "--to", "claude", "--write", "--json"],
+    { stdout: (value) => stdout.push(value), stderr: () => undefined },
+    { processCwd: root, home: join(root, "home") },
+  );
+
+  assert.equal(code, 1);
+  const value = JSON.parse(stdout.join(""));
+  assert.equal(value.dryRun, false);
+  assert.deepEqual(value.created, []);
+  assert.deepEqual(value.conflicts.map((item: { path: string }) => item.path), ["./two/CLAUDE.md"]);
+  await assert.rejects(readFile(join(root, "one/CLAUDE.md")), { code: "ENOENT" });
+  assert.equal(await readFile(join(root, "two/CLAUDE.md"), "utf8"), "keep me");
+});
+
+test("sync --write is idempotent", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-sync-idempotent-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, ".git"));
+  await mkdir(join(root, "nested"));
+  await writeFile(join(root, "AGENTS.md"), "root");
+  await writeFile(join(root, "CLAUDE.md"), "@AGENTS.md");
+  await writeFile(join(root, "nested/AGENTS.md"), "nested");
+  await writeFile(join(root, "nested/game.ts"), "export {};");
+  const env = { processCwd: root, home: join(root, "home") };
+
+  assert.equal(await run(
+    ["sync", "--from", "codex", "--to", "claude", "--write"],
+    { stdout: () => undefined, stderr: () => undefined },
+    env,
+  ), 0);
+  const stdout: string[] = [];
+  assert.equal(await run(
+    ["sync", "--from", "codex", "--to", "claude", "--write", "--json"],
+    { stdout: (value) => stdout.push(value), stderr: () => undefined },
+    env,
+  ), 0);
+
+  const value = JSON.parse(stdout.join(""));
+  assert.equal(value.dryRun, false);
+  assert.deepEqual(value.created, []);
+  assert.equal(await readFile(join(root, "nested/CLAUDE.md"), "utf8"), "@AGENTS.md\n");
 });

@@ -1,4 +1,4 @@
-import { stat } from "node:fs/promises";
+import { stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 
 import type { CompareResult } from "./compare.js";
@@ -18,10 +18,11 @@ export interface SyncResult {
   command: "sync";
   from: "codex";
   to: "claude";
-  dryRun: true;
+  dryRun: boolean;
   root: string;
   proposals: SyncProposal[];
   conflicts: SyncConflict[];
+  created: string[];
 }
 
 async function exists(path: string): Promise<boolean> {
@@ -67,5 +68,20 @@ export async function buildSyncPlan(comparison: CompareResult): Promise<SyncResu
     root: comparison.root,
     proposals,
     conflicts,
+    created: [],
   };
+}
+
+export async function writeSyncPlan(plan: SyncResult): Promise<SyncResult> {
+  const result = { ...plan, dryRun: false, created: [] as string[] };
+  if (plan.conflicts.length) return result;
+  for (const proposal of plan.proposals) {
+    await writeFile(
+      resolve(plan.root, proposal.path.replace(/^\.\//, "")),
+      proposal.content,
+      { flag: "wx" },
+    );
+    result.created.push(proposal.path);
+  }
+  return result;
 }
