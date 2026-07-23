@@ -76,7 +76,7 @@ npx harness-map doctor [--agent codex|claude]
 npx harness-map scan [--agent codex|claude]
 npx harness-map compare [--agents codex,claude]
 npx harness-map diff [<before> <after>] [--json]
-npx harness-map observe <file> --from <log> [--json]
+npx harness-map observe <file> [--from <log>] [--json]
 npx harness-map check [--json]
 npx harness-map sync --from codex --to claude [--dry-run|--write] [--json]
 ```
@@ -116,7 +116,7 @@ Claude Code's `InstructionsLoaded` hook. Add a local hook after installing
         "hooks": [
           {
             "type": "command",
-            "command": "npx --no-install harness-map observe --record \"${CLAUDE_PROJECT_DIR}/.harness-map/claude-observations.jsonl\""
+            "command": "npx --no-install harness-map observe record"
           }
         ]
       }
@@ -125,14 +125,17 @@ Claude Code's `InstructionsLoaded` hook. Add a local hook after installing
 }
 ```
 
-Put this in `.claude/settings.local.json`, add `.harness-map/` to
-`.gitignore`, then start a new Claude Code session and let it access the target
-file. Compare the latest recorded session:
+Put this in `.claude/settings.local.json`, then start a new Claude Code session
+and let it access the target file. Compare the latest recorded session:
 
 ```sh
-npx harness-map observe src/game.ts \
-  --from .harness-map/claude-observations.jsonl
+npx harness-map observe src/game.ts
 ```
+
+Default logs live under `~/.harness-map/observations/`, keyed by a hash of the
+project root. They do not modify the project or expose its name in the log
+filename. Use `observe record --output <log>` and `observe <file> --from <log>`
+when an explicit location is preferable.
 
 The recorder stores only whitelisted instruction metadata: session ID, working
 directory, instruction path, scope, load reason, matching globs, and lazy-load
@@ -203,8 +206,8 @@ harness-map doctor [--agent codex|claude]
 harness-map scan [--agent codex|claude]
 harness-map compare [--agents codex,claude]
 harness-map diff [<before> <after>] [--json]
-harness-map observe --record <log>
-harness-map observe <file> --from <log> [--json]
+harness-map observe record [--output <log>]
+harness-map observe <file> [--from <log>] [--json]
 harness-map check [--json]
 harness-map sync --from codex --to claude [--dry-run|--write] [--json]
 ```

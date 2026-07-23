@@ -40,6 +40,7 @@ import { findGitRoot, withGitSnapshot } from "./git-snapshot.js";
 import {
   appendObservation,
   buildObservedContext,
+  defaultObservationLogPath,
   parseClaudeHookEvent,
   parseObservationLog,
 } from "./observe.js";
@@ -56,6 +57,7 @@ export interface CliEnv {
   processCwd: string;
   home: string;
   codexHome?: string;
+  claudeProjectDir?: string;
 }
 
 const help = `Usage:
@@ -66,8 +68,8 @@ const help = `Usage:
   harness-map scan [--agent codex|claude] [--json]
   harness-map compare [--agents codex,claude] [--json]
   harness-map diff [<before> <after>] [--json]
-  harness-map observe --record <log>
-  harness-map observe <file> --from <log> [--json]
+  harness-map observe record [--output <log>]
+  harness-map observe <file> [--from <log>] [--json]
   harness-map check [--json]
   harness-map sync --from codex --to claude [--dry-run|--write] [--json]
 `;
@@ -119,6 +121,7 @@ export async function run(
     processCwd: process.cwd(),
     home: homedir(),
     codexHome: process.env.CODEX_HOME,
+    claudeProjectDir: process.env.CLAUDE_PROJECT_DIR,
   },
 ): Promise<number> {
   if (argv.length === 0 || argv.includes("--help") || argv.includes("-h")) {
@@ -220,23 +223,36 @@ export async function run(
         allowPositionals: true,
         options: {
           record: { type: "string" },
+          output: { type: "string" },
           from: { type: "string" },
           json: { type: "boolean", default: false },
         },
       });
-      if (values.record) {
-        if (positionals.length || values.from || values.json) {
-          throw new Error("observe --record accepts only an output log path");
+      const recordMode = positionals.length === 1 && positionals[0] === "record";
+      if (recordMode || values.record) {
+        if (
+          (positionals.length && !recordMode) ||
+          values.from ||
+          values.json ||
+          (values.record && values.output)
+        ) {
+          throw new Error("observe record accepts only --output <log>");
         }
         const input = await (io.stdin?.() ?? readStdin());
+        const observation = parseClaudeHookEvent(JSON.parse(input));
+        const projectRoot = env.claudeProjectDir
+          ? resolve(env.claudeProjectDir)
+          : await findProjectRoot(observation.cwd);
         await appendObservation(
-          resolve(env.processCwd, values.record),
-          parseClaudeHookEvent(JSON.parse(input)),
+          values.output || values.record
+            ? resolve(env.processCwd, values.output ?? values.record!)
+            : defaultObservationLogPath(env.home, projectRoot),
+          observation,
         );
         return 0;
       }
-      if (positionals.length !== 1 || !values.from) {
-        throw new Error("observe requires one file and --from <log>");
+      if (positionals.length !== 1 || values.output) {
+        throw new Error("observe requires one file and optional --from <log>");
       }
       const target = resolve(env.processCwd, positionals[0]);
       const map = await discoverClaude({
@@ -245,7 +261,12 @@ export async function run(
         userHome: env.home,
       });
       const observations = parseObservationLog(
-        await readFile(resolve(env.processCwd, values.from), "utf8"),
+        await readFile(
+          values.from
+            ? resolve(env.processCwd, values.from)
+            : defaultObservationLogPath(env.home, map.projectRoot),
+          "utf8",
+        ),
       );
       const result = buildObservedContext(map, observations);
       io.stdout(values.json ? `${JSON.stringify(result, null, 2)}\n` : renderObservedContext(result));

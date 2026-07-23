@@ -4,6 +4,7 @@ import test from "node:test";
 import type { ClaudeMap } from "../src/claude.js";
 import {
   buildObservedContext,
+  defaultObservationLogPath,
   parseClaudeHookEvent,
   parseObservationLog,
 } from "../src/observe.js";
@@ -40,6 +41,17 @@ const map: ClaudeMap = {
   ],
   skippedInstructions: [],
 };
+
+test("derives a stable private log name for each project", () => {
+  const first = defaultObservationLogPath("/home/me", "/projects/first");
+  const repeated = defaultObservationLogPath("/home/me", "/projects/first");
+  const second = defaultObservationLogPath("/home/me", "/projects/second");
+
+  assert.equal(first, repeated);
+  assert.notEqual(first, second);
+  assert.match(first, /^\/home\/me\/\.harness-map\/observations\/[a-f0-9]{16}\.jsonl$/);
+  assert.equal(first.includes("first"), false);
+});
 
 test("sanitizes a Claude InstructionsLoaded hook event", () => {
   const observation = parseClaudeHookEvent({

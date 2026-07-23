@@ -1,5 +1,6 @@
+import { createHash } from "node:crypto";
 import { appendFile, mkdir } from "node:fs/promises";
-import { dirname, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 
 import type { ClaudeMap } from "./claude.js";
 
@@ -37,6 +38,11 @@ export interface ObservedContextResult {
   matched: string[];
   expectedOnly: string[];
   observedOnly: string[];
+}
+
+export function defaultObservationLogPath(userHome: string, projectRoot: string): string {
+  const projectId = createHash("sha256").update(resolve(projectRoot)).digest("hex").slice(0, 16);
+  return join(resolve(userHome), ".harness-map", "observations", `${projectId}.jsonl`);
 }
 
 function object(value: unknown, name: string): Record<string, unknown> {

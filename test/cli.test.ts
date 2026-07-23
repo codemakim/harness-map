@@ -7,6 +7,7 @@ import test from "node:test";
 import { promisify } from "node:util";
 
 import { run } from "../src/cli.js";
+import { defaultObservationLogPath } from "../src/observe.js";
 
 const execFile = promisify(execFileCallback);
 
@@ -566,7 +567,8 @@ test("observe records sanitized hook input and compares the latest session", asy
   t.after(() => rm(root, { recursive: true, force: true }));
   await cp(join(import.meta.dirname, "fixtures/observed-context"), root, { recursive: true });
   await mkdir(join(root, ".git"));
-  const log = join(root, ".harness-map/claude-observations.jsonl");
+  const home = join(root, "home");
+  const log = defaultObservationLogPath(home, root);
   const events = [
     {
       file_path: join(root, "CLAUDE.md"),
@@ -596,7 +598,7 @@ test("observe records sanitized hook input and compares the latest session", asy
 
   for (const event of events) {
     const recordCode = await run(
-      ["observe", "--record", log],
+      ["observe", "record"],
       {
         stdin: async () => JSON.stringify({
           session_id: "session-1",
@@ -609,7 +611,7 @@ test("observe records sanitized hook input and compares the latest session", asy
         stdout: () => undefined,
         stderr: () => undefined,
       },
-      { processCwd: root, home: join(root, "home") },
+      { processCwd: root, home, claudeProjectDir: root },
     );
     assert.equal(recordCode, 0);
   }
@@ -620,9 +622,9 @@ test("observe records sanitized hook input and compares the latest session", asy
 
   const stdout: string[] = [];
   const compareCode = await run(
-    ["observe", "src/game.ts", "--from", log, "--json"],
+    ["observe", "src/game.ts", "--json"],
     { stdout: (value) => stdout.push(value), stderr: () => undefined },
-    { processCwd: root, home: join(root, "home") },
+    { processCwd: root, home },
   );
   const value = JSON.parse(stdout.join(""));
 
@@ -637,6 +639,35 @@ test("observe records sanitized hook input and compares the latest session", asy
   ]);
   assert.deepEqual(value.expectedOnly, []);
   assert.deepEqual(value.observedOnly, []);
+});
+
+test("observe preserves explicit and legacy record paths", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "harness-map-observe-paths-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const input = JSON.stringify({
+    session_id: "session-1",
+    cwd: root,
+    hook_event_name: "InstructionsLoaded",
+    file_path: join(root, "CLAUDE.md"),
+    memory_type: "Project",
+    load_reason: "session_start",
+  });
+  const explicit = join(root, "explicit.jsonl");
+  const legacy = join(root, "legacy.jsonl");
+  const env = { processCwd: root, home: join(root, "home") };
+
+  assert.equal(await run(
+    ["observe", "record", "--output", explicit],
+    { stdin: async () => input, stdout: () => undefined, stderr: () => undefined },
+    env,
+  ), 0);
+  assert.equal(await run(
+    ["observe", "--record", legacy],
+    { stdin: async () => input, stdout: () => undefined, stderr: () => undefined },
+    env,
+  ), 0);
+  assert.match(await readFile(explicit, "utf8"), /"sessionId":"session-1"/);
+  assert.match(await readFile(legacy, "utf8"), /"sessionId":"session-1"/);
 });
 
 test("check exits cleanly for shared project instructions", async (t) => {
