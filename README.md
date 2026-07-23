@@ -110,7 +110,7 @@ It applies `project_doc_fallback_filenames`, `project_doc_max_bytes`, and
 `project_root_markers`. An explicitly empty `project_root_markers` list limits
 project discovery to the effective working directory.
 
-## v0.4 Scope
+## v0.5 Scope
 
 Current adapters: Codex and Claude Code.
 
