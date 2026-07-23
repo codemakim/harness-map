@@ -121,8 +121,8 @@
 - [x] Require one clear actionable coverage finding for `life-agent`, including affected files and a safe dry-run fix.
 - [x] Require useful unconfigured output for `project-ricochet` without treating it as an error.
 - [x] Stop feature expansion if these acceptance checks fail; do not add Cursor or semantic analysis to hide weak signal.
-- [ ] If checks pass, bump the minor version, verify tarball installation, publish npm, tag Git, and create a GitHub Release.
-- [ ] Commit release preparation with `chore(release): prepare v0.5.0`.
+- [x] If checks pass, bump the minor version, verify tarball installation, publish npm, tag Git, and create a GitHub Release.
+- [x] Commit release preparation with `chore(release): prepare v0.5.0`.
 
 ### Validation Result
 
